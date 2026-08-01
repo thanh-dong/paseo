@@ -353,6 +353,11 @@ function mergeMutableConfigIntoPersistedConfig(params: {
         ...persisted.daemon?.browserTools,
         enabled: browserToolsEnabled,
       },
+      autoResumeOnLimit: {
+        ...persisted.daemon?.autoResumeOnLimit,
+        enabled: mutable.autoResumeOnLimit.enabled,
+        maxAttempts: mutable.autoResumeOnLimit.maxAttempts,
+      },
       autoArchiveAfterMerge: mutable.autoArchiveAfterMerge,
       enableTerminalAgentHooks: mutable.enableTerminalAgentHooks,
       appendSystemPrompt: mutable.appendSystemPrompt,

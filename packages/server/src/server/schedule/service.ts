@@ -365,6 +365,49 @@ export class ScheduleService {
     });
   }
 
+  async createOrReplaceOneShotAt(input: {
+    name: string;
+    prompt: string;
+    target: ScheduleTarget;
+    runAt: Date;
+  }): Promise<StoredSchedule> {
+    const name = trimOptionalName(input.name);
+    if (!name) {
+      throw new Error("One-shot schedules require a name");
+    }
+    const prompt = normalizePrompt(input.prompt);
+    const runAtIso = input.runAt.toISOString();
+    return this.store.upsertByNameAndTarget(name, input.target, {
+      create: async () => ({
+        name,
+        prompt,
+        cadence: { type: "every", everyMs: 60_000 },
+        target: input.target,
+        status: "active",
+        createdAt: this.now().toISOString(),
+        updatedAt: this.now().toISOString(),
+        nextRunAt: runAtIso,
+        lastRunAt: null,
+        pausedAt: null,
+        expiresAt: null,
+        maxRuns: 1,
+        runs: [],
+      }),
+      update: async (current) => ({
+        ...current,
+        name,
+        prompt,
+        cadence: { type: "every", everyMs: 60_000 },
+        target: input.target,
+        status: "active",
+        pausedAt: null,
+        nextRunAt: runAtIso,
+        maxRuns: 1,
+        updatedAt: this.now().toISOString(),
+      }),
+    });
+  }
+
   async list(): Promise<StoredSchedule[]> {
     return this.store.list();
   }

@@ -437,6 +437,10 @@ function resolveStaticLoadConfigSettings(
     mcpInjectIntoAgents:
       cli?.mcpInjectIntoAgents ?? persisted.daemon?.mcp?.injectIntoAgents ?? false,
     browserToolsEnabled: resolveBrowserToolsEnabled(persisted),
+    autoResumeOnLimit: {
+      enabled: persisted.daemon?.autoResumeOnLimit?.enabled ?? false,
+      maxAttempts: persisted.daemon?.autoResumeOnLimit?.maxAttempts ?? 3,
+    },
     autoArchiveAfterMerge: persisted.daemon?.autoArchiveAfterMerge ?? false,
     appendSystemPrompt: resolveAppendSystemPrompt(persisted),
     terminalProfiles: persisted.daemon?.terminalProfiles,
@@ -465,6 +469,7 @@ export function loadConfig(
     mcpEnabled,
     mcpInjectIntoAgents,
     browserToolsEnabled,
+    autoResumeOnLimit,
     autoArchiveAfterMerge,
     appendSystemPrompt,
     terminalProfiles,
@@ -504,6 +509,7 @@ export function loadConfig(
     mcpEnabled,
     mcpInjectIntoAgents,
     browserToolsEnabled,
+    autoResumeOnLimit,
     autoArchiveAfterMerge,
     enableTerminalAgentHooks: persisted.daemon?.enableTerminalAgentHooks ?? false,
     appendSystemPrompt,

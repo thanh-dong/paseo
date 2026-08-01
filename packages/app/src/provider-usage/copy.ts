@@ -10,6 +10,8 @@ export const providerUsageCopy = {
   loading: "Loading usage...",
   empty: "No usage data",
   errorTitle: "Unable to load usage",
+  autoResumeTitle: "Auto-resume when a usage limit resets",
+  autoResumeHint: "Retry the interrupted prompt after the provider window opens again.",
   hostUnavailable: "Connect to this host to see provider usage",
   hostUpgradeRequired: "Update the host to see provider usage",
   clientUnavailable: "Host connection is not ready",

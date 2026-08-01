@@ -87,6 +87,7 @@ export function toStoredAgentRecord(
     features: normalizeFeatures(agent.features),
     persistence,
     lastError: agent.lastError ?? undefined,
+    autoResume: agent.autoResume,
     requiresAttention: agent.attention.requiresAttention,
     attentionReason: agent.attention.requiresAttention ? agent.attention.attentionReason : null,
     attentionTimestamp: agent.attention.requiresAttention
@@ -138,6 +139,9 @@ export function toAgentPayload(
 
   if (agent.lastError !== undefined) {
     payload.lastError = agent.lastError;
+  }
+  if (agent.autoResume) {
+    payload.autoResumeAt = agent.autoResume.at;
   }
 
   // Handle attention state
@@ -230,6 +234,7 @@ export function buildStoredAgentPayload(
     availableModes: [],
     pendingPermissions: [],
     persistence,
+    ...(record.autoResume ? { autoResumeAt: record.autoResume.at } : {}),
     title: record.title ?? null,
     requiresAttention: record.requiresAttention ?? false,
     attentionReason: record.attentionReason ?? null,

@@ -23,6 +23,7 @@ export interface AgentScreenAgent {
   } | null;
   features?: readonly AgentFeature[];
   lastError?: string | null;
+  autoResumeAt?: Date | null;
   projectPlacement?: {
     projectKey?: string;
     projectName?: string;

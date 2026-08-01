@@ -142,6 +142,7 @@ import { FileBackedProjectRegistry, FileBackedWorkspaceRegistry } from "./worksp
 import { FileBackedChatService } from "./chat/chat-service.js";
 import { CheckoutDiffManager } from "./checkout-diff-manager.js";
 import { LoopService } from "./loop-service.js";
+import { ProviderUsageService } from "../services/quota-fetcher/service.js";
 import { ScheduleService } from "./schedule/service.js";
 import { DaemonConfigStore, type MutableDaemonConfig } from "./daemon-config-store.js";
 import { BrowserToolsBroker } from "./browser-tools/broker.js";
@@ -384,6 +385,10 @@ export interface PaseoDaemonConfig {
   mcpEnabled?: boolean;
   mcpInjectIntoAgents?: boolean;
   browserToolsEnabled?: boolean;
+  autoResumeOnLimit?: {
+    enabled: boolean;
+    maxAttempts: number;
+  };
   autoArchiveAfterMerge?: boolean;
   enableTerminalAgentHooks?: boolean;
   appendSystemPrompt?: string;
@@ -514,6 +519,7 @@ function createInitialMutableDaemonConfig(config: PaseoDaemonConfig): MutableDae
     relay: { enabled: config.relayEnabled ?? true },
     mcp: { injectIntoAgents: config.mcpInjectIntoAgents ?? true },
     browserTools: { enabled: config.browserToolsEnabled ?? false },
+    autoResumeOnLimit: config.autoResumeOnLimit ?? { enabled: false, maxAttempts: 3 },
     providers,
     metadataGeneration: {
       providers: config.metadataGeneration?.providers ?? [],
@@ -816,11 +822,16 @@ export async function createPaseoDaemon(
     extraClients: config.agentClients,
   });
   const initialAgentManagerState = providerSnapshotManager.getAgentManagerProviderState();
+  const providerUsageService = new ProviderUsageService({
+    logger,
+  });
   const agentManager = new AgentManager({
     clients: initialAgentManagerState.clients,
     providerDefinitions: initialAgentManagerState.providerDefinitions,
     registry: agentStorage,
     appendSystemPrompt: config.appendSystemPrompt,
+    autoResumeOnLimit: config.autoResumeOnLimit ?? { enabled: false, maxAttempts: 3 },
+    loadProviderUsage: () => providerUsageService.listUsage(),
     onWorkspaceStateMayHaveChanged: ({ cwd }) => {
       workspaceGitService.onWorkspaceStateMayHaveChanged(cwd);
     },
@@ -1201,6 +1212,75 @@ export async function createPaseoDaemon(
     archiveWorkspace: archiveScheduleWorkspaceExternal,
   });
   await scheduleService.start();
+  agentManager.setAutoResumeHandlers({
+    loadProviderUsage: () => providerUsageService.listUsage(),
+    scheduleAutoResume: async (request) => {
+      await scheduleService.createOrReplaceOneShotAt({
+        name: `auto-resume:${request.agentId}`,
+        prompt: request.prompt,
+        target: { type: "agent", agentId: request.agentId },
+        runAt: new Date(request.at + 60_000),
+      });
+    },
+    cancelAutoResume: async (agentId) => {
+      const schedules = await scheduleService.list();
+      await Promise.all(
+        schedules
+          .filter(
+            (schedule) =>
+              schedule.name === `auto-resume:${agentId}` &&
+              schedule.target.type === "agent" &&
+              schedule.target.agentId === agentId &&
+              schedule.status !== "completed",
+          )
+        .map((schedule) => scheduleService.delete(schedule.id)),
+      );
+    },
+  });
+  const clearPersistedAutoResumeState = async () => {
+    const [schedules, agents] = await Promise.all([scheduleService.list(), agentStorage.list()]);
+    await Promise.all(
+      schedules
+        .filter((schedule) => schedule.name?.startsWith("auto-resume:") && schedule.status !== "completed")
+        .map((schedule) => scheduleService.delete(schedule.id)),
+    );
+    await Promise.all(
+      agents
+        .filter((record) => record.autoResume)
+        .map((record) =>
+          agentStorage.upsert({
+            ...record,
+            autoResume: undefined,
+          }),
+        ),
+    );
+  };
+  if ((config.autoResumeOnLimit?.enabled ?? false) !== true) {
+    await clearPersistedAutoResumeState();
+  }
+  daemonConfigStore.onFieldChange("autoResumeOnLimit", (value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      agentManager.setAutoResumeOnLimitConfig({ enabled: false, maxAttempts: 3 });
+      void clearPersistedAutoResumeState().catch((error) => {
+        logger.warn({ err: error }, "Failed to clear pending auto-resume state");
+      });
+      return;
+    }
+    const enabled = (value as { enabled?: unknown }).enabled === true;
+    const maxAttempts = (value as { maxAttempts?: unknown }).maxAttempts;
+    agentManager.setAutoResumeOnLimitConfig({
+      enabled,
+      maxAttempts:
+        typeof maxAttempts === "number" && Number.isInteger(maxAttempts) && maxAttempts > 0
+          ? maxAttempts
+          : 3,
+    });
+    if (!enabled) {
+      void clearPersistedAutoResumeState().catch((error) => {
+        logger.warn({ err: error }, "Failed to clear pending auto-resume state");
+      });
+    }
+  });
   agentManager.setAgentArchivedCallback(async (agentId) => {
     try {
       await scheduleService.completeForAgent(agentId);

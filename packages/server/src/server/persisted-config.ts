@@ -248,6 +248,13 @@ export const PersistedConfigSchema = z
           })
           .passthrough()
           .optional(),
+        autoResumeOnLimit: z
+          .object({
+            enabled: z.boolean().optional(),
+            maxAttempts: z.number().int().positive().optional(),
+          })
+          .strict()
+          .optional(),
         autoArchiveAfterMerge: z.boolean().optional(),
         enableTerminalAgentHooks: z.boolean().optional(),
         appendSystemPrompt: z.string().optional(),

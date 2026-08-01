@@ -25,6 +25,7 @@ export function normalizeAgentSnapshot(snapshot: AgentSnapshotPayload, serverId:
   const attentionTimestamp = snapshot.attentionTimestamp
     ? new Date(snapshot.attentionTimestamp)
     : null;
+  const autoResumeAt = snapshot.autoResumeAt ? new Date(snapshot.autoResumeAt) : null;
   const archivedAt = snapshot.archivedAt ? new Date(snapshot.archivedAt) : null;
   const parentAgentId = getParentAgentIdFromLabels(snapshot.labels);
 
@@ -45,6 +46,7 @@ export function normalizeAgentSnapshot(snapshot: AgentSnapshotPayload, serverId:
     runtimeInfo: snapshot.runtimeInfo,
     lastUsage: snapshot.lastUsage,
     lastError: snapshot.lastError ?? null,
+    autoResumeAt,
     title: snapshot.title ?? null,
     cwd: snapshot.cwd,
     workspaceId: snapshot.workspaceId,

@@ -110,6 +110,7 @@ import {
   type ProviderCatalog,
   type ResolveAgentDefaultModeInput,
 } from "../../agent-sdk-types.js";
+import { parseUsageLimitResetTime } from "../../usage-limit.js";
 import { importSessionFromPersistence } from "../../provider-session-import.js";
 import {
   checkProviderLaunchAvailable,
@@ -3246,12 +3247,18 @@ class ClaudeAgentSession implements AgentSession {
     const exitCodeMatch = normalized.match(/\bcode\s+(\d+)\b/i);
     const code = exitCodeMatch ? exitCodeMatch[1] : undefined;
     const diagnostic = this.getRecentStderrDiagnostic();
+    const resetsAt = parseUsageLimitResetTime(
+      [normalized, diagnostic].filter((part) => typeof part === "string" && part.length > 0).join(
+        "\n",
+      ),
+    );
     return {
       type: "turn_failed",
       provider: "claude",
       error: normalized,
       ...(code ? { code } : {}),
       ...(diagnostic ? { diagnostic } : {}),
+      ...(resetsAt !== undefined ? { usageLimit: { resetsAt } } : {}),
     };
   }
 

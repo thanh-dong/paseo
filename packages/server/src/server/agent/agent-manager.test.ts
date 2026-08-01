@@ -6629,6 +6629,173 @@ test("turn_failed surfaces provider code and diagnostic in system error message"
   expect(systemError?.text).toContain("No preset version installed for command claude");
 });
 
+test("usage-limit failures schedule auto-resume and manual prompts cancel it", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-auto-resume-"));
+  const storagePath = join(workdir, "agents");
+  const storage = new AgentStorage(storagePath, logger);
+  const scheduled: Array<{ agentId: string; at: number; attempt: number; prompt: string }> = [];
+  const canceled: string[] = [];
+
+  class AutoResumeSession extends TestAgentSession {
+    override async startTurn(prompt?: AgentPromptInput): Promise<{ turnId: string }> {
+      const turnId = `turn-${Date.now()}`;
+      const text =
+        typeof prompt === "string"
+          ? prompt
+          : prompt
+              ?.filter((part): part is Extract<(typeof prompt)[number], { type: "text" }> =>
+                part.type === "text",
+              )
+              .map((part) => part.text)
+              .join("\n") ?? "";
+      setTimeout(() => {
+        this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
+        if (text.startsWith("<paseo-system>\n")) {
+          this.pushEvent({ type: "turn_completed", provider: this.provider, turnId });
+          return;
+        }
+        if (text.includes("hit the limit")) {
+          this.pushEvent({
+            type: "turn_failed",
+            provider: this.provider,
+            error: "429 rate limit reached. resets at 3:15pm",
+            turnId,
+          });
+          return;
+        }
+        this.pushEvent({ type: "turn_completed", provider: this.provider, turnId });
+      }, 0);
+      return { turnId };
+    }
+  }
+
+  class AutoResumeClient extends TestAgentClient {
+    override async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+      return new AutoResumeSession(config);
+    }
+  }
+
+  const manager = new AgentManager({
+    clients: { codex: new AutoResumeClient() },
+    registry: storage,
+    autoResumeOnLimit: { enabled: true, maxAttempts: 3 },
+    scheduleAutoResume: async (request) => {
+      scheduled.push(request);
+    },
+    cancelAutoResume: async (agentId) => {
+      canceled.push(agentId);
+    },
+    logger,
+  });
+
+  const agent = await manager.createAgent(
+    {
+      provider: "codex",
+      cwd: workdir,
+      title: "Auto resume test",
+    },
+    undefined,
+    { workspaceId: undefined },
+  );
+
+  await expect(manager.runAgent(agent.id, "hit the limit")).rejects.toThrow("429 rate limit reached");
+  expect(scheduled).toHaveLength(1);
+  expect(scheduled[0]?.agentId).toBe(agent.id);
+  expect(scheduled[0]?.attempt).toBe(1);
+  expect(scheduled[0]?.prompt).toContain("hit the limit");
+
+  const storedAfterFailure = await storage.get(agent.id);
+  expect(storedAfterFailure?.autoResume?.attempt).toBe(1);
+  expect(storedAfterFailure?.autoResume?.prompt).toContain("hit the limit");
+
+  await expect(manager.runAgent(agent.id, "continue manually")).resolves.toEqual(
+    expect.objectContaining({ canceled: false }),
+  );
+  expect(canceled).toContain(agent.id);
+
+  const storedAfterManualResume = await storage.get(agent.id);
+  expect(storedAfterManualResume?.autoResume).toBeUndefined();
+});
+
+test("schedule-fired auto-resume completes and clears pending state", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-auto-resume-fire-"));
+  const storagePath = join(workdir, "agents");
+  const storage = new AgentStorage(storagePath, logger);
+  const scheduled: Array<{ agentId: string; at: number; attempt: number; prompt: string }> = [];
+
+  class AutoResumeSession extends TestAgentSession {
+    override async startTurn(prompt?: AgentPromptInput): Promise<{ turnId: string }> {
+      const turnId = `turn-${Date.now()}`;
+      const text =
+        typeof prompt === "string"
+          ? prompt
+          : prompt
+              ?.filter((part): part is Extract<(typeof prompt)[number], { type: "text" }> =>
+                part.type === "text",
+              )
+              .map((part) => part.text)
+              .join("\n") ?? "";
+      setTimeout(() => {
+        this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
+        if (text.startsWith("<paseo-system>\n")) {
+          this.pushEvent({ type: "turn_completed", provider: this.provider, turnId });
+          return;
+        }
+        if (text.includes("hit the limit")) {
+          this.pushEvent({
+            type: "turn_failed",
+            provider: this.provider,
+            error: "429 rate limit reached. resets at 3:15pm",
+            turnId,
+          });
+          return;
+        }
+        this.pushEvent({ type: "turn_completed", provider: this.provider, turnId });
+      }, 0);
+      return { turnId };
+    }
+  }
+
+  class AutoResumeClient extends TestAgentClient {
+    override async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+      return new AutoResumeSession(config);
+    }
+  }
+
+  const manager = new AgentManager({
+    clients: { codex: new AutoResumeClient() },
+    registry: storage,
+    autoResumeOnLimit: { enabled: true, maxAttempts: 3 },
+    scheduleAutoResume: async (request) => {
+      scheduled.push(request);
+    },
+    logger,
+  });
+
+  const agent = await manager.createAgent(
+    {
+      provider: "codex",
+      cwd: workdir,
+      title: "Auto resume fire test",
+    },
+    undefined,
+    { workspaceId: undefined },
+  );
+
+  await expect(manager.runAgent(agent.id, "hit the limit")).rejects.toThrow("429 rate limit reached");
+  expect(scheduled).toHaveLength(1);
+
+  const scheduleWrappedPrompt = formatSystemNotificationPrompt(
+    `Schedule "auto-resume:${agent.id}" fired (id=schedule-1, run=run-1).\n${scheduled[0]?.prompt ?? ""}`,
+  );
+  await expect(manager.runAgent(agent.id, scheduleWrappedPrompt)).resolves.toEqual(
+    expect.objectContaining({ canceled: false }),
+  );
+
+  const storedAfterScheduleFire = await storage.get(agent.id);
+  expect(storedAfterScheduleFire?.autoResume).toBeUndefined();
+});
+
 test("permission request notifies once without forcing unread attention state", async () => {
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-attention-permission-"));
   const storagePath = join(workdir, "agents");

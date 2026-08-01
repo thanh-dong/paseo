@@ -1,4 +1,5 @@
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { Alert as InlineAlert } from "@/components/ui/alert";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import type { TFunction } from "i18next";
 import { SquarePen } from "lucide-react-native";
@@ -67,6 +68,7 @@ import {
   deriveRouteBottomAnchorIntent,
   deriveRouteBottomAnchorRequest,
 } from "@/screens/agent/agent-ready-screen-bottom-anchor";
+import { useHostFeature } from "@/runtime/host-features";
 import { WorkspaceDraftAgentTab } from "@/composer/draft/workspace-tab";
 import { useCreateFlowStore } from "@/stores/create-flow-store";
 import { buildDraftStoreKey, generateDraftId } from "@/stores/draft-keys";
@@ -106,6 +108,7 @@ interface ChatAgentStateShape {
   runtimeInfo?: Agent["runtimeInfo"];
   features?: Agent["features"];
   lastError?: Agent["lastError"] | null;
+  autoResumeAt?: Agent["autoResumeAt"] | null;
 }
 
 interface ChatAgentSelectedState extends ChatAgentStateShape {
@@ -156,6 +159,7 @@ function selectChatAgentState(
     runtimeInfo: agent.runtimeInfo,
     features: agent.features,
     lastError: agent.lastError ?? null,
+    autoResumeAt: agent.autoResumeAt ?? null,
     archivedAt: agent.archivedAt ?? null,
     requiresAttention: agent.requiresAttention ?? false,
     attentionReason: agent.attentionReason ?? null,
@@ -183,6 +187,7 @@ function buildChatAgentFromState(
     runtimeInfo: state.runtimeInfo,
     features: state.features,
     lastError: state.lastError ?? null,
+    autoResumeAt: state.autoResumeAt ?? null,
     projectPlacement,
   };
 }
@@ -233,6 +238,13 @@ function formatProviderLabel(provider: Agent["provider"]): string {
     .filter((part) => part.length > 0)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+}
+
+function formatAutoResumeTime(date: Date): string {
+  return date.toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit",
+  });
 }
 
 function resolveWorkspaceAgentTabLabel(title: string | null | undefined): string | null {
@@ -709,6 +721,7 @@ function AgentPanelBody({
           runtimeInfo: agentState.runtimeInfo,
           features: agentState.features,
           lastError: agentState.lastError ?? null,
+          autoResumeAt: agentState.autoResumeAt ?? null,
           projectPlacement,
         }
       : null;
@@ -1152,6 +1165,7 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
   onOpenWorkspaceFile?: (request: WorkspaceFileOpenRequest) => void;
 }) {
   const { t } = useTranslation();
+  const supportsAutoResumeOnLimit = useHostFeature(serverId, "autoResumeOnLimit");
   const rawAgentInputDraft = useAgentInputDraft({
     draftKey: buildDraftStoreKey({
       serverId,
@@ -1228,12 +1242,25 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
     <ReanimatedAnimated.View style={animatedContentStyle}>{streamSection}</ReanimatedAnimated.View>
   );
   const contentContainer = <View style={styles.contentContainer}>{streamContent}</View>;
+  const autoResumeAt =
+    supportsAutoResumeOnLimit &&
+    effectiveAgent.status === "error" &&
+    agentState.autoResumeAt instanceof Date
+      ? agentState.autoResumeAt
+      : null;
 
   return (
     <RewindComposerRestoreProvider text={agentInputDraft.text} setText={agentInputDraft.setText}>
       <View style={styles.root}>
         <FileDropZone style={styles.container} disabled={isArchivingCurrentAgent}>
           {contentContainer}
+
+          {autoResumeAt ? (
+            <InlineAlert
+              title="Usage limit reached"
+              description={`Auto-resuming at ${formatAutoResumeTime(autoResumeAt)}`}
+            />
+          ) : null}
 
           {showHistorySyncError ? (
             <SidebarCallout

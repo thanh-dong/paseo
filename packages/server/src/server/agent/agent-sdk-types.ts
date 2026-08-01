@@ -399,6 +399,9 @@ export type AgentStreamEvent =
       error: string;
       code?: string;
       diagnostic?: string;
+      usageLimit?: {
+        resetsAt?: number;
+      };
       turnId?: string;
     }
   | { type: "turn_canceled"; provider: AgentProvider; reason: string; turnId?: string }

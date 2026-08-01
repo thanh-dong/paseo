@@ -12,6 +12,14 @@ initializing → idle → running → idle (or error → closed)
 
 Each live agent in `AgentManager` carries a `lastStatus` of `initializing`, `idle`, `running`, or `error`. `closed` is the persisted, resumable state for an agent record that has no live provider runtime. State transitions persist to disk and stream to subscribed clients via WebSocket.
 
+## Waiting for reset
+
+An agent that hits a provider usage or rate limit still enters `error`. The auto-resume flow does not add a new lifecycle state.
+
+When host settings enable auto-resume, Paseo records the interrupted prompt, resolves the next retry time from provider text or quota data, and schedules one retry against the same agent. The client renders that as a calm waiting state from `autoResumeAt`, while the daemon keeps the underlying lifecycle literal.
+
+Pending auto-resume is canceled when the user sends a manual prompt, the scheduled retry completes, the agent is archived, or the host setting is turned off.
+
 ## Runtime residency
 
 An unarchived agent may be `closed` without being deleted or archived. Closing releases its provider

@@ -1,9 +1,12 @@
 import { RefreshCw } from "lucide-react-native";
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { useDaemonConfig } from "@/hooks/use-daemon-config";
+import { useHostFeature } from "@/runtime/host-features";
 import { settingsStyles } from "@/styles/settings";
 import { SettingsSection } from "@/screens/settings/settings-section";
 import { providerUsageCopy } from "./copy";
@@ -11,13 +14,25 @@ import { ProviderUsageList } from "./list";
 import type { ProviderUsageView } from "./types";
 
 export function ProviderUsageSettingsSection({
+  serverId,
   view,
   onRefresh,
 }: {
+  serverId: string;
   view: ProviderUsageView;
   onRefresh: () => void;
 }) {
   const busy = view.kind === "loading" || (view.kind === "ready" && view.isRefreshing);
+  const supportsAutoResume = useHostFeature(serverId, "autoResumeOnLimit");
+  const { config, patchConfig } = useDaemonConfig(serverId);
+  const autoResumeEnabled = config?.autoResumeOnLimit?.enabled === true;
+  const handleAutoResumeToggle = useCallback(() => {
+    void patchConfig({
+      autoResumeOnLimit: {
+        enabled: !autoResumeEnabled,
+      },
+    });
+  }, [autoResumeEnabled, patchConfig]);
 
   const refreshButton = useMemo(
     () => (
@@ -41,6 +56,21 @@ export function ProviderUsageSettingsSection({
       testID="provider-usage-card"
       trailing={refreshButton}
     >
+      {supportsAutoResume ? (
+        <View style={settingsStyles.card}>
+          <View style={settingsStyles.row}>
+            <View style={settingsStyles.rowContent}>
+              <Text style={settingsStyles.rowTitle}>{providerUsageCopy.autoResumeTitle}</Text>
+              <Text style={settingsStyles.rowHint}>{providerUsageCopy.autoResumeHint}</Text>
+            </View>
+            <Switch
+              value={autoResumeEnabled}
+              onValueChange={handleAutoResumeToggle}
+              accessibilityLabel={providerUsageCopy.autoResumeTitle}
+            />
+          </View>
+        </View>
+      ) : null}
       <ProviderUsageBody view={view} onRefresh={onRefresh} />
     </SettingsSection>
   );
