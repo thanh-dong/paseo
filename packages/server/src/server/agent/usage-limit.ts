@@ -8,19 +8,20 @@ const GENERIC_LIMIT_PATTERNS = [
   /\b429\b/i,
   /\brate[\s-]?limit\b/i,
   /\busage[\s-]?limit\b/i,
-  /\bquota\b/i,
-  /\blimit reached\b/i,
   /\btoo many requests\b/i,
   /\boverloaded_error\b/i,
+  /\brequest limit\b/i,
+  /\b(?:api|request|usage|token)\s+quota\s+(?:exceeded|reached)\b/i,
+  /\bquota\s+exceeded\s+for\s+(?:api|requests?|usage|tokens?)\b/i,
 ];
 
 const PROVIDER_LIMIT_PATTERNS: Partial<Record<AgentProvider, RegExp[]>> = {
-  claude: [/\bclaude ai usage limit reached\b/i, /\buntil your limit resets\b/i, /∙\s*resets?/i],
-  codex: [/\btry again later\b/i, /\brequest limit\b/i],
+  claude: [/\bclaude ai usage limit reached\b/i, /\buntil your limit resets\b/i],
+  codex: [/\brequest limit\b/i, /\brate limit\b/i],
   copilot: [/\bapi rate limit exceeded\b/i, /\bsecondary rate limit\b/i],
   opencode: [/\boverloaded_error\b/i, /\brate[- ]limited\b/i],
-  pi: [/\bquota exceeded\b/i, /\brate limit exceeded\b/i],
-  omp: [/\brate limit exceeded\b/i, /\bquota exceeded\b/i],
+  pi: [/\b(?:api|usage)\s+quota exceeded\b/i, /\brate limit exceeded\b/i],
+  omp: [/\brate limit exceeded\b/i, /\b(?:api|usage)\s+quota exceeded\b/i],
 };
 
 const RESET_SEGMENT_PATTERNS = [
@@ -35,7 +36,15 @@ function normalizeText(parts: Array<string | undefined | null>): string {
     .join("\n");
 }
 
-function matchesUsageLimit(providerId: AgentProvider, text: string): boolean {
+export function matchesUsageLimitError(
+  providerId: AgentProvider,
+  error: string,
+  diagnostic?: string,
+): boolean {
+  const text = normalizeText([error, diagnostic]);
+  if (!text) {
+    return false;
+  }
   const providerPatterns = PROVIDER_LIMIT_PATTERNS[providerId] ?? [];
   return [...providerPatterns, ...GENERIC_LIMIT_PATTERNS].some((pattern) => pattern.test(text));
 }
@@ -107,7 +116,7 @@ export function classifyUsageLimitError(
   diagnostic?: string,
 ): UsageLimitClassification | null {
   const text = normalizeText([error, diagnostic]);
-  if (!text || !matchesUsageLimit(providerId, text)) {
+  if (!text || !matchesUsageLimitError(providerId, error, diagnostic)) {
     return null;
   }
   const resetsAt = parseUsageLimitResetTime(text);

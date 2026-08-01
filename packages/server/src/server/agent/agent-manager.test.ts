@@ -6804,6 +6804,80 @@ test("schedule-fired auto-resume completes and clears pending state", async () =
   expect(storedAfterScheduleFire?.autoResume).toBeUndefined();
 });
 
+test("claude reset phrasing without limit language does not schedule auto-resume", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-claude-reset-phrase-"));
+  const storagePath = join(workdir, "agents");
+  const storage = new AgentStorage(storagePath, logger);
+  const scheduled: Array<{ agentId: string; at: number; attempt: number; prompt: string }> = [];
+  let turnCounter = 0;
+
+  class ClaudeResetPhraseSession extends TestAgentSession {
+    override async startTurn(prompt?: AgentPromptInput): Promise<{ turnId: string }> {
+      const turnId = `turn-${++turnCounter}`;
+      const text =
+        typeof prompt === "string"
+          ? prompt
+          : (prompt
+              ?.filter(
+                (part): part is Extract<(typeof prompt)[number], { type: "text" }> =>
+                  part.type === "text",
+              )
+              .map((part) => part.text)
+              .join("\n") ?? "");
+      setTimeout(() => {
+        this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
+        if (text.includes("reset phrase")) {
+          this.pushEvent({
+            type: "turn_failed",
+            provider: this.provider,
+            error: "Claude cache metadata refresh failed. Cache resets at 3:15pm",
+            turnId,
+          });
+          return;
+        }
+        this.pushEvent({ type: "turn_completed", provider: this.provider, turnId });
+      }, 0);
+      return { turnId };
+    }
+  }
+
+  class ClaudeResetPhraseClient extends TestAgentClient {
+    constructor() {
+      super("claude");
+    }
+
+    override async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+      return new ClaudeResetPhraseSession(config);
+    }
+  }
+
+  const manager = new AgentManager({
+    clients: { claude: new ClaudeResetPhraseClient() },
+    registry: storage,
+    autoResumeOnLimit: { enabled: true, maxAttempts: 3 },
+    scheduleAutoResume: async (request) => {
+      scheduled.push(request);
+    },
+    logger,
+  });
+
+  const agent = await manager.createAgent(
+    {
+      provider: "claude",
+      cwd: workdir,
+      title: "Claude reset phrase test",
+    },
+    undefined,
+    { workspaceId: undefined },
+  );
+
+  await expect(manager.runAgent(agent.id, "reset phrase")).rejects.toThrow(
+    "Cache resets at 3:15pm",
+  );
+  expect(scheduled).toHaveLength(0);
+  expect((await storage.get(agent.id))?.autoResume).toBeUndefined();
+});
+
 test("permission request notifies once without forcing unread attention state", async () => {
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-attention-permission-"));
   const storagePath = join(workdir, "agents");

@@ -920,11 +920,18 @@ export class AgentManager {
     if (!this.autoResumeOnLimit.enabled || !this.scheduleAutoResume) {
       return;
     }
-    const classification =
-      event.usageLimit ?? classifyUsageLimitError(event.provider, event.error, event.diagnostic);
-    if (!classification) {
+    const classifiedUsageLimit = classifyUsageLimitError(
+      event.provider,
+      event.error,
+      event.diagnostic,
+    );
+    if (!classifiedUsageLimit) {
       return;
     }
+    const classification =
+      classifiedUsageLimit.resetsAt === undefined && event.usageLimit?.resetsAt !== undefined
+        ? { resetsAt: event.usageLimit.resetsAt }
+        : classifiedUsageLimit;
 
     const originalPrompt = (agent.autoResume?.prompt ?? agent.lastSubmittedPromptText ?? "").trim();
     if (!originalPrompt) {
@@ -3895,7 +3902,9 @@ export class AgentManager {
       this.formatTurnFailedMessage(event),
       options,
     );
-    await this.scheduleAutoResumeForUsageLimit(agent, event);
+    if (!options?.fromHistory) {
+      await this.scheduleAutoResumeForUsageLimit(agent, event);
+    }
     this.resolvePendingPermissionsForAgent(agent, event.provider, options, "Turn failed");
     if (!isForegroundEvent) {
       this.emitState(agent);

@@ -1,5 +1,6 @@
 import { RefreshCw } from "lucide-react-native";
 import { useCallback, useMemo } from "react";
+import { useMutation } from "@tanstack/react-query";
 import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { Alert } from "@/components/ui/alert";
@@ -26,13 +27,22 @@ export function ProviderUsageSettingsSection({
   const supportsAutoResume = useHostFeature(serverId, "autoResumeOnLimit");
   const { config, patchConfig } = useDaemonConfig(serverId);
   const autoResumeEnabled = config?.autoResumeOnLimit?.enabled === true;
+  const autoResumeMutation = useMutation({
+    mutationFn: async (next: boolean) => {
+      const result = await patchConfig({
+        autoResumeOnLimit: {
+          enabled: next,
+        },
+      });
+      if (!result) {
+        throw new Error(providerUsageCopy.clientUnavailable);
+      }
+      return result;
+    },
+  });
   const handleAutoResumeToggle = useCallback(() => {
-    void patchConfig({
-      autoResumeOnLimit: {
-        enabled: !autoResumeEnabled,
-      },
-    });
-  }, [autoResumeEnabled, patchConfig]);
+    autoResumeMutation.mutate(!autoResumeEnabled);
+  }, [autoResumeEnabled, autoResumeMutation]);
 
   const refreshButton = useMemo(
     () => (
@@ -62,10 +72,18 @@ export function ProviderUsageSettingsSection({
             <View style={settingsStyles.rowContent}>
               <Text style={settingsStyles.rowTitle}>{providerUsageCopy.autoResumeTitle}</Text>
               <Text style={settingsStyles.rowHint}>{providerUsageCopy.autoResumeHint}</Text>
+              {autoResumeMutation.error ? (
+                <Text style={settingsStyles.rowError}>
+                  {autoResumeMutation.error instanceof Error
+                    ? autoResumeMutation.error.message
+                    : String(autoResumeMutation.error)}
+                </Text>
+              ) : null}
             </View>
             <Switch
               value={autoResumeEnabled}
               onValueChange={handleAutoResumeToggle}
+              disabled={autoResumeMutation.isPending}
               accessibilityLabel={providerUsageCopy.autoResumeTitle}
             />
           </View>

@@ -9,7 +9,7 @@ describe("classifyUsageLimitError", () => {
       {},
     );
     expect(classifyUsageLimitError("opencode", "overloaded_error: please retry later")).toEqual({});
-    expect(classifyUsageLimitError("pi", "quota exceeded for this workspace")).toEqual({});
+    expect(classifyUsageLimitError("pi", "API quota exceeded for this workspace")).toEqual({});
     expect(classifyUsageLimitError("omp", "rate limit exceeded; retry later")).toEqual({});
   });
 
@@ -29,6 +29,13 @@ describe("classifyUsageLimitError", () => {
       "Claude AI usage limit reached. Resets at 3:15pm",
     );
     expect(result?.resetsAt).toBeTypeOf("number");
+  });
+
+  test("ignores broad non-provider limit phrases", () => {
+    expect(classifyUsageLimitError("codex", "disk quota exceeded")).toBeNull();
+    expect(classifyUsageLimitError("codex", "file size limit reached")).toBeNull();
+    expect(classifyUsageLimitError("codex", "connection limit reached")).toBeNull();
+    expect(classifyUsageLimitError("codex", "network timeout, try again later")).toBeNull();
   });
 
   test("ignores non-limit failures", () => {

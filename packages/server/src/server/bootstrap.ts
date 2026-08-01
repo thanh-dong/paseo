@@ -1219,6 +1219,7 @@ export async function createPaseoDaemon(
         name: `auto-resume:${request.agentId}`,
         prompt: request.prompt,
         target: { type: "agent", agentId: request.agentId },
+        // Retry slightly after the reset boundary so providers have time to reopen the window.
         runAt: new Date(request.at + 60_000),
       });
     },
