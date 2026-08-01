@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { FetchAgentsEntry } from "@getpaseo/client/internal/daemon-client";
 import type { AgentSnapshotPayload } from "@getpaseo/protocol/messages";
 import type { Agent } from "@/stores/session-store";
+import { normalizeAgentSnapshot } from "@/utils/agent-snapshots";
 import { reconcileAgentDirectory } from "./agent-directory-reconciliation";
 
 function snapshot(id: string, status: AgentSnapshotPayload["status"]): AgentSnapshotPayload {
@@ -52,15 +53,8 @@ function entry(id: string, status: AgentSnapshotPayload["status"]): FetchAgentsE
 
 function replica(id: string, status: Agent["status"]): Agent {
   return {
-    ...snapshot(id, status),
-    serverId: "server",
-    createdAt: new Date("2026-07-12T10:00:00.000Z"),
-    updatedAt: new Date("2026-07-12T10:00:00.000Z"),
+    ...normalizeAgentSnapshot(snapshot(id, status), "server"),
     lastActivityAt: new Date("2026-07-12T10:00:00.000Z"),
-    lastUserMessageAt: null,
-    attentionTimestamp: null,
-    archivedAt: null,
-    parentAgentId: null,
   };
 }
 

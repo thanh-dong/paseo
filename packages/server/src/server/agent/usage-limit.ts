@@ -15,11 +15,7 @@ const GENERIC_LIMIT_PATTERNS = [
 ];
 
 const PROVIDER_LIMIT_PATTERNS: Partial<Record<AgentProvider, RegExp[]>> = {
-  claude: [
-    /\bclaude ai usage limit reached\b/i,
-    /\buntil your limit resets\b/i,
-    /∙\s*resets?/i,
-  ],
+  claude: [/\bclaude ai usage limit reached\b/i, /\buntil your limit resets\b/i, /∙\s*resets?/i],
   codex: [/\btry again later\b/i, /\brequest limit\b/i],
   copilot: [/\bapi rate limit exceeded\b/i, /\bsecondary rate limit\b/i],
   opencode: [/\boverloaded_error\b/i, /\brate[- ]limited\b/i],

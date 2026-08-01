@@ -8,21 +8,19 @@ describe("classifyUsageLimitError", () => {
     expect(classifyUsageLimitError("copilot", "API rate limit exceeded for this request")).toEqual(
       {},
     );
-    expect(classifyUsageLimitError("opencode", "overloaded_error: please retry later")).toEqual(
-      {},
-    );
+    expect(classifyUsageLimitError("opencode", "overloaded_error: please retry later")).toEqual({});
     expect(classifyUsageLimitError("pi", "quota exceeded for this workspace")).toEqual({});
     expect(classifyUsageLimitError("omp", "rate limit exceeded; retry later")).toEqual({});
   });
 
   test("parses Claude reset times from provider text", () => {
-    const now = new Date("2026-08-01T08:00:00.000Z");
-    expect(
-      parseUsageLimitResetTime("Claude AI usage limit reached. Resets at 3:15pm", now),
-    ).toBe(new Date("2026-08-01T15:15:00.000Z").getTime());
+    const now = new Date(2026, 7, 1, 8, 0, 0, 0);
+    expect(parseUsageLimitResetTime("Claude AI usage limit reached. Resets at 3:15pm", now)).toBe(
+      new Date(2026, 7, 1, 15, 15, 0, 0).getTime(),
+    );
     expect(
       parseUsageLimitResetTime("Claude AI usage limit reached.\n∙ resets tomorrow 3:15pm", now),
-    ).toBe(new Date("2026-08-02T15:15:00.000Z").getTime());
+    ).toBe(new Date(2026, 7, 2, 15, 15, 0, 0).getTime());
   });
 
   test("returns parsed reset times in the classification result", () => {

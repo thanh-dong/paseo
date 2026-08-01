@@ -3248,9 +3248,9 @@ class ClaudeAgentSession implements AgentSession {
     const code = exitCodeMatch ? exitCodeMatch[1] : undefined;
     const diagnostic = this.getRecentStderrDiagnostic();
     const resetsAt = parseUsageLimitResetTime(
-      [normalized, diagnostic].filter((part) => typeof part === "string" && part.length > 0).join(
-        "\n",
-      ),
+      [normalized, diagnostic]
+        .filter((part) => typeof part === "string" && part.length > 0)
+        .join("\n"),
     );
     return {
       type: "turn_failed",

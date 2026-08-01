@@ -43,7 +43,8 @@ import {
   type ImportableProviderSession,
   type ListImportableSessionsOptions,
 } from "./agent-sdk-types.js";
-import type { ProviderUsage, ProviderUsageListResult } from "@getpaseo/protocol/messages";
+import type { ProviderUsage } from "@getpaseo/protocol/messages";
+import type { ProviderUsageListResult } from "../../services/quota-fetcher/service.js";
 import { buildArchivedAgentRecord, type ArchivedStoredAgentRecord } from "./agent-archive.js";
 import type { StoredAgentRecord, AgentStorage } from "./agent-storage.js";
 import type { AgentOwner } from "./agent-owner.js";
@@ -232,6 +233,25 @@ interface AutoResumeScheduleRequest {
 type ProviderUsageLoader = () => Promise<ProviderUsageListResult>;
 type AutoResumeScheduler = (request: AutoResumeScheduleRequest) => Promise<void>;
 type AutoResumeCanceler = (agentId: string) => Promise<void>;
+
+function resolveAutoResumeOnLimitOptions(
+  options: Pick<
+    AgentManagerOptions,
+    "autoResumeOnLimit" | "loadProviderUsage" | "scheduleAutoResume" | "cancelAutoResume"
+  >,
+): {
+  config: AutoResumeOnLimitConfig;
+  loadProviderUsage: ProviderUsageLoader | null;
+  scheduleAutoResume: AutoResumeScheduler | null;
+  cancelAutoResume: AutoResumeCanceler | null;
+} {
+  return {
+    config: options.autoResumeOnLimit ?? { enabled: false, maxAttempts: 3 },
+    loadProviderUsage: options.loadProviderUsage ?? null,
+    scheduleAutoResume: options.scheduleAutoResume ?? null,
+    cancelAutoResume: options.cancelAutoResume ?? null,
+  };
+}
 
 export interface ProviderAvailability {
   provider: AgentProvider;
@@ -589,13 +609,17 @@ function promptToText(prompt: AgentPromptInput): string {
   if (typeof prompt === "string") {
     return prompt.trim();
   }
-  return prompt
+  const blocks = Array.isArray(prompt) ? prompt : [prompt];
+  return blocks
     .flatMap((block) => {
-      if (block.type === "text") {
-        return [block.text];
-      }
-      if (block.type === "image") {
-        return [];
+      if (typeof block === "object" && block !== null) {
+        if ("type" in block) {
+          return block.type === "text" ? [block.text] : [];
+        }
+        const text = (block as Record<string, unknown>).text;
+        if (typeof text === "string") {
+          return [text];
+        }
       }
       return [];
     })
@@ -603,7 +627,9 @@ function promptToText(prompt: AgentPromptInput): string {
     .trim();
 }
 
-function resolveUsageWindowResetsAt(window: ProviderUsage["windows"][number] | undefined): number | null {
+function resolveUsageWindowResetsAt(
+  window: ProviderUsage["windows"][number] | undefined,
+): number | null {
   const value = window?.resetsAt;
   if (!value) {
     return null;
@@ -656,6 +682,7 @@ export class AgentManager {
   private acceptingAgentRegistrations = true;
 
   constructor(options: AgentManagerOptions) {
+    const autoResume = resolveAutoResumeOnLimitOptions(options);
     this.idFactory = options?.idFactory ?? (() => randomUUID());
     this.registry = options?.registry;
     this.durableTimelineStore = options?.durableTimelineStore;
@@ -665,10 +692,10 @@ export class AgentManager {
     this.mcpAuthToken = options?.mcpAuthToken ?? null;
     this.configurePaseoTools(options);
     this.appendSystemPrompt = options.appendSystemPrompt ?? "";
-    this.autoResumeOnLimit = options.autoResumeOnLimit ?? { enabled: false, maxAttempts: 3 };
-    this.loadProviderUsage = options.loadProviderUsage ?? null;
-    this.scheduleAutoResume = options.scheduleAutoResume ?? null;
-    this.cancelAutoResume = options.cancelAutoResume ?? null;
+    this.autoResumeOnLimit = autoResume.config;
+    this.loadProviderUsage = autoResume.loadProviderUsage;
+    this.scheduleAutoResume = autoResume.scheduleAutoResume;
+    this.cancelAutoResume = autoResume.cancelAutoResume;
     this.logger = options.logger.child({ module: "agent", component: "agent-manager" });
     this.rescueTimeouts = {
       reloadSessionCloseMs:
@@ -831,7 +858,7 @@ export class AgentManager {
 
     const exhaustedWeeklyReset =
       providerId === "claude"
-        ? futureResets
+        ? (futureResets
             .filter((entry) => {
               const id = entry.window.id.toLowerCase();
               const label = entry.window.label.toLowerCase();
@@ -846,7 +873,7 @@ export class AgentManager {
               return remainingPct !== null && remainingPct <= 1;
             })
             .map((entry) => entry.resetsAt)
-            .sort((left, right) => right - left)[0] ?? null
+            .sort((left, right) => right - left)[0] ?? null)
         : null;
 
     if (exhaustedWeeklyReset !== null) {
@@ -859,7 +886,9 @@ export class AgentManager {
       return preferredResetAt;
     }
 
-    return futureResets.map((entry) => entry.resetsAt).sort((left, right) => left - right)[0] ?? null;
+    return (
+      futureResets.map((entry) => entry.resetsAt).sort((left, right) => left - right)[0] ?? null
+    );
   }
 
   private async resolveAutoResumeAt(params: {
@@ -868,13 +897,15 @@ export class AgentManager {
     attempt: number;
   }): Promise<number> {
     const providerUsage = this.loadProviderUsage
-      ? (await this.loadProviderUsage().catch((error) => {
-          this.logger.warn(
-            { err: error, provider: params.providerId },
-            "Failed to load provider usage for auto-resume",
-          );
-          return null;
-        }))?.providers.find((provider) => provider.providerId === params.providerId)
+      ? (
+          await this.loadProviderUsage().catch((error) => {
+            this.logger.warn(
+              { err: error, provider: params.providerId },
+              "Failed to load provider usage for auto-resume",
+            );
+            return null;
+          })
+        )?.providers.find((provider: ProviderUsage) => provider.providerId === params.providerId)
       : undefined;
     return (
       this.selectProviderUsageResetAt(params.providerId, providerUsage, params.preferredResetAt) ??
@@ -3066,6 +3097,7 @@ export class AgentManager {
           historyPrimed?: boolean;
           lastUsage?: AgentUsage;
           lastError?: string;
+          autoResume?: AutoResumeState;
           attention?: AttentionState;
           persistence?: AgentPersistenceHandle;
           workspaceId?: string;
@@ -3822,7 +3854,7 @@ export class AgentManager {
     // it from the completion event.
     agent.lastError = undefined;
     agent.lastSubmittedPromptText = null;
-    await this.clearPendingAutoResume(agent, { persist: false, cancelSchedule: true });
+    await this.clearPendingAutoResume(agent, { persist: true, cancelSchedule: true });
     if (!isForegroundEvent && agent.lifecycle !== "idle" && !agent.pendingReplacement) {
       (agent as ActiveManagedAgent).lifecycle = "idle";
       this.emitState(agent);

@@ -2628,15 +2628,8 @@ describe("HostRuntimeStore", () => {
         title: "Stale active copy",
       }).agent;
       const staleAgent: Agent = {
-        ...stale,
-        serverId: host.serverId,
-        createdAt: new Date(stale.createdAt),
-        updatedAt: new Date(stale.updatedAt),
-        lastUserMessageAt: null,
+        ...normalizeAgentSnapshot(stale, host.serverId),
         lastActivityAt: new Date(stale.updatedAt),
-        archivedAt: stale.archivedAt ? new Date(stale.archivedAt) : null,
-        attentionTimestamp: stale.attentionTimestamp ? new Date(stale.attentionTimestamp) : null,
-        parentAgentId: null,
       };
       return new Map([[stale.id, staleAgent]]);
     });

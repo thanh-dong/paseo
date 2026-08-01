@@ -1233,7 +1233,7 @@ export async function createPaseoDaemon(
               schedule.target.agentId === agentId &&
               schedule.status !== "completed",
           )
-        .map((schedule) => scheduleService.delete(schedule.id)),
+          .map((schedule) => scheduleService.delete(schedule.id)),
       );
     },
   });
@@ -1241,7 +1241,10 @@ export async function createPaseoDaemon(
     const [schedules, agents] = await Promise.all([scheduleService.list(), agentStorage.list()]);
     await Promise.all(
       schedules
-        .filter((schedule) => schedule.name?.startsWith("auto-resume:") && schedule.status !== "completed")
+        .filter(
+          (schedule) =>
+            schedule.name?.startsWith("auto-resume:") && schedule.status !== "completed",
+        )
         .map((schedule) => scheduleService.delete(schedule.id)),
     );
     await Promise.all(

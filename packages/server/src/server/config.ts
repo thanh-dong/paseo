@@ -427,6 +427,16 @@ function resolveBrowserToolsEnabled(persisted: ReturnType<typeof loadPersistedCo
   return persisted.daemon?.browserTools?.enabled ?? false;
 }
 
+function resolveAutoResumeOnLimitConfig(persisted: ReturnType<typeof loadPersistedConfig>): {
+  enabled: boolean;
+  maxAttempts: number;
+} {
+  return {
+    enabled: persisted.daemon?.autoResumeOnLimit?.enabled ?? false,
+    maxAttempts: persisted.daemon?.autoResumeOnLimit?.maxAttempts ?? 3,
+  };
+}
+
 function resolveStaticLoadConfigSettings(
   env: NodeJS.ProcessEnv,
   cli: CliConfigOverrides | undefined,
@@ -437,10 +447,7 @@ function resolveStaticLoadConfigSettings(
     mcpInjectIntoAgents:
       cli?.mcpInjectIntoAgents ?? persisted.daemon?.mcp?.injectIntoAgents ?? false,
     browserToolsEnabled: resolveBrowserToolsEnabled(persisted),
-    autoResumeOnLimit: {
-      enabled: persisted.daemon?.autoResumeOnLimit?.enabled ?? false,
-      maxAttempts: persisted.daemon?.autoResumeOnLimit?.maxAttempts ?? 3,
-    },
+    autoResumeOnLimit: resolveAutoResumeOnLimitConfig(persisted),
     autoArchiveAfterMerge: persisted.daemon?.autoArchiveAfterMerge ?? false,
     appendSystemPrompt: resolveAppendSystemPrompt(persisted),
     terminalProfiles: persisted.daemon?.terminalProfiles,

@@ -5251,10 +5251,10 @@ test("subscribe error isolation: throwing subscriber does not break event flow",
   });
 
   await settled;
+  await vi.waitFor(() => expect(receivedEvents).toContain("turn_completed"));
 
   expect(receivedEvents).toContain("turn_started");
   expect(receivedEvents).toContain("timeline");
-  expect(receivedEvents).toContain("turn_completed");
   expect(manager.getTimeline(snapshot.id)).toContainEqual({
     type: "assistant_message",
     text: "EVENT_AFTER_ERROR",
@@ -6635,19 +6635,21 @@ test("usage-limit failures schedule auto-resume and manual prompts cancel it", a
   const storage = new AgentStorage(storagePath, logger);
   const scheduled: Array<{ agentId: string; at: number; attempt: number; prompt: string }> = [];
   const canceled: string[] = [];
+  let turnCounter = 0;
 
   class AutoResumeSession extends TestAgentSession {
     override async startTurn(prompt?: AgentPromptInput): Promise<{ turnId: string }> {
-      const turnId = `turn-${Date.now()}`;
+      const turnId = `turn-${++turnCounter}`;
       const text =
         typeof prompt === "string"
           ? prompt
-          : prompt
-              ?.filter((part): part is Extract<(typeof prompt)[number], { type: "text" }> =>
-                part.type === "text",
+          : (prompt
+              ?.filter(
+                (part): part is Extract<(typeof prompt)[number], { type: "text" }> =>
+                  part.type === "text",
               )
               .map((part) => part.text)
-              .join("\n") ?? "";
+              .join("\n") ?? "");
       setTimeout(() => {
         this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
         if (text.startsWith("<paseo-system>\n")) {
@@ -6698,7 +6700,9 @@ test("usage-limit failures schedule auto-resume and manual prompts cancel it", a
     { workspaceId: undefined },
   );
 
-  await expect(manager.runAgent(agent.id, "hit the limit")).rejects.toThrow("429 rate limit reached");
+  await expect(manager.runAgent(agent.id, "hit the limit")).rejects.toThrow(
+    "429 rate limit reached",
+  );
   expect(scheduled).toHaveLength(1);
   expect(scheduled[0]?.agentId).toBe(agent.id);
   expect(scheduled[0]?.attempt).toBe(1);
@@ -6722,19 +6726,21 @@ test("schedule-fired auto-resume completes and clears pending state", async () =
   const storagePath = join(workdir, "agents");
   const storage = new AgentStorage(storagePath, logger);
   const scheduled: Array<{ agentId: string; at: number; attempt: number; prompt: string }> = [];
+  let turnCounter = 0;
 
   class AutoResumeSession extends TestAgentSession {
     override async startTurn(prompt?: AgentPromptInput): Promise<{ turnId: string }> {
-      const turnId = `turn-${Date.now()}`;
+      const turnId = `turn-${++turnCounter}`;
       const text =
         typeof prompt === "string"
           ? prompt
-          : prompt
-              ?.filter((part): part is Extract<(typeof prompt)[number], { type: "text" }> =>
-                part.type === "text",
+          : (prompt
+              ?.filter(
+                (part): part is Extract<(typeof prompt)[number], { type: "text" }> =>
+                  part.type === "text",
               )
               .map((part) => part.text)
-              .join("\n") ?? "";
+              .join("\n") ?? "");
       setTimeout(() => {
         this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
         if (text.startsWith("<paseo-system>\n")) {
@@ -6782,7 +6788,9 @@ test("schedule-fired auto-resume completes and clears pending state", async () =
     { workspaceId: undefined },
   );
 
-  await expect(manager.runAgent(agent.id, "hit the limit")).rejects.toThrow("429 rate limit reached");
+  await expect(manager.runAgent(agent.id, "hit the limit")).rejects.toThrow(
+    "429 rate limit reached",
+  );
   expect(scheduled).toHaveLength(1);
 
   const scheduleWrappedPrompt = formatSystemNotificationPrompt(

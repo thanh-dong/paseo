@@ -160,10 +160,7 @@ export const MutableDaemonConfigSchema = z
       })
       .passthrough(),
     browserTools: MutableBrowserToolsConfigSchema.default({ enabled: false }),
-    autoResumeOnLimit: MutableAutoResumeOnLimitConfigSchema.default({
-      enabled: false,
-      maxAttempts: 3,
-    }),
+    autoResumeOnLimit: MutableAutoResumeOnLimitConfigSchema.optional(),
     providers: z.record(z.string(), MutableDaemonProviderConfigSchema).default({}),
     metadataGeneration: MutableMetadataGenerationConfigSchema.default({ providers: [] }),
     autoArchiveAfterMerge: z.boolean().default(false),

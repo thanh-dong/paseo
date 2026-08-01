@@ -142,6 +142,16 @@ function isEqualValue(a: unknown, b: unknown): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
+function resolveAutoResumeOnLimitConfig(config: Pick<MutableDaemonConfig, "autoResumeOnLimit">): {
+  enabled: boolean;
+  maxAttempts: number;
+} {
+  return {
+    enabled: config.autoResumeOnLimit?.enabled === true,
+    maxAttempts: config.autoResumeOnLimit?.maxAttempts ?? 3,
+  };
+}
+
 export function applyMutableProviderConfigToOverrides(
   baseOverrides: Record<string, ProviderOverride> | undefined,
   mutableProviders: MutableDaemonConfig["providers"] | undefined,
@@ -355,8 +365,7 @@ function mergeMutableConfigIntoPersistedConfig(params: {
       },
       autoResumeOnLimit: {
         ...persisted.daemon?.autoResumeOnLimit,
-        enabled: mutable.autoResumeOnLimit.enabled,
-        maxAttempts: mutable.autoResumeOnLimit.maxAttempts,
+        ...resolveAutoResumeOnLimitConfig(mutable),
       },
       autoArchiveAfterMerge: mutable.autoArchiveAfterMerge,
       enableTerminalAgentHooks: mutable.enableTerminalAgentHooks,
