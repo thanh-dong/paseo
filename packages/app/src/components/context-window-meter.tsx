@@ -179,6 +179,7 @@ export function ContextWindowMeter({
       delayDuration={0}
       enabledOnDesktop
       enabledOnMobile
+      interactive
     >
       <TooltipTrigger asChild triggerRefProp="ref">
         <Pressable

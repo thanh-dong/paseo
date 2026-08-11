@@ -48,7 +48,15 @@ interface TooltipContextValue {
   enabled: boolean;
   openOnPress: boolean;
   delayDuration: number;
+  interactive: boolean;
+  scheduleClose: () => void;
+  cancelClose: () => void;
 }
+
+// Grace period between the pointer leaving the trigger/content and the tooltip
+// actually closing, for `interactive` tooltips in desktop hover mode. Gives the
+// pointer time to cross the gap between trigger and portal-rendered content.
+const CLOSE_GRACE_MS = 150;
 
 const TooltipContext = createContext<TooltipContextValue | null>(null);
 
@@ -231,6 +239,7 @@ export function Tooltip({
   delayDuration = 0,
   enabledOnDesktop = true,
   enabledOnMobile = false,
+  interactive = false,
   children,
 }: PropsWithChildren<{
   open?: boolean;
@@ -239,6 +248,12 @@ export function Tooltip({
   delayDuration?: number;
   enabledOnDesktop?: boolean;
   enabledOnMobile?: boolean;
+  // Opt-in: on desktop/web hover mode, keeps the tooltip open (after a short
+  // grace period) while the pointer travels from the trigger into the
+  // portal-rendered content, instead of closing the instant the trigger loses
+  // hover. Has no effect on the compact press+overlay path. Only set this for
+  // tooltips whose content needs to be interacted with (buttons, switches).
+  interactive?: boolean;
 }>): ReactElement {
   const triggerRef = useRef<View>(null);
   const [isOpen, setIsOpen] = useControllableOpenState({
@@ -250,6 +265,29 @@ export function Tooltip({
   const isCompact = useIsCompactFormFactor();
   const enabled = isCompact ? enabledOnMobile : enabledOnDesktop;
 
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const cancelClose = useCallback(() => {
+    if (closeTimerRef.current) {
+      clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+  }, []);
+
+  const scheduleClose = useCallback(() => {
+    cancelClose();
+    closeTimerRef.current = setTimeout(() => {
+      closeTimerRef.current = null;
+      setIsOpen(false);
+    }, CLOSE_GRACE_MS);
+  }, [cancelClose, setIsOpen]);
+
+  useEffect(() => {
+    return () => {
+      cancelClose();
+    };
+  }, [cancelClose]);
+
   const value = useMemo<TooltipContextValue>(
     () => ({
       open: isOpen,
@@ -258,8 +296,11 @@ export function Tooltip({
       enabled,
       openOnPress: isCompact,
       delayDuration,
+      interactive,
+      scheduleClose,
+      cancelClose,
     }),
-    [isOpen, setIsOpen, enabled, isCompact, delayDuration],
+    [isOpen, setIsOpen, enabled, isCompact, delayDuration, interactive, scheduleClose, cancelClose],
   );
 
   return <TooltipContext.Provider value={value}>{children}</TooltipContext.Provider>;
@@ -305,6 +346,7 @@ export function TooltipTrigger({
 
   const close = useCallback(() => {
     clearOpenTimer();
+    ctx.cancelClose();
     ctx.setOpen(false);
   }, [clearOpenTimer, ctx]);
 
@@ -317,17 +359,28 @@ export function TooltipTrigger({
   const handleHoverIn = useCallback(
     (e?: unknown) => {
       if (isCallable(onHoverIn)) onHoverIn(e);
+      // Moving back onto the trigger cancels any close scheduled by a
+      // previous hover-out (interactive tooltips only; see handleHoverOut).
+      ctx.cancelClose();
       scheduleOpen();
     },
-    [onHoverIn, scheduleOpen],
+    [onHoverIn, ctx, scheduleOpen],
   );
 
   const handleHoverOut = useCallback(
     (e?: unknown) => {
       if (isCallable(onHoverOut)) onHoverOut(e);
-      close();
+      clearOpenTimer();
+      if (ctx.interactive && !ctx.openOnPress) {
+        // Give the pointer a grace period to reach the portal-rendered
+        // content instead of closing immediately.
+        ctx.scheduleClose();
+        return;
+      }
+      ctx.cancelClose();
+      ctx.setOpen(false);
     },
-    [onHoverOut, close],
+    [onHoverOut, clearOpenTimer, ctx],
   );
 
   const handleFocus = useCallback(
@@ -507,13 +560,30 @@ export function TooltipContent({
   );
   const contentStyle = useMemo(() => [styles.content, style], [style]);
 
-  const handleDismiss = useCallback(() => ctx.setOpen(false), [ctx]);
+  const handleDismiss = useCallback(() => {
+    ctx.cancelClose();
+    ctx.setOpen(false);
+  }, [ctx]);
 
   if (!ctx.open || !ctx.enabled) return null;
 
   // On web, avoid React Native's <Modal/> implementation (it uses <dialog> and can
   // steal focus / disrupt hover). Rendering via Portal + position:fixed keeps the
   // exact same positioning math as DropdownMenu, without hover feedback loops.
+  //
+  // When `interactive`, the pointer entering/leaving the content only cancels or
+  // schedules the shared close timer (never scheduleOpen) — that keeps this safe
+  // from the hover feedback loop the Portal rendering is otherwise prone to.
+  const contentHoverProps =
+    isWeb && ctx.interactive && !ctx.openOnPress
+      ? ({
+          onPointerEnter: ctx.cancelClose,
+          onPointerLeave: ctx.scheduleClose,
+          onMouseEnter: ctx.cancelClose,
+          onMouseLeave: ctx.scheduleClose,
+        } as object)
+      : null;
+
   if (isWeb) {
     return createPortal(
       <View pointerEvents="none" style={styles.portalOverlay}>
@@ -526,6 +596,7 @@ export function TooltipContent({
           onLayout={handleLayout}
           style={contentStyle}
           frameStyle={frameStyle}
+          {...contentHoverProps}
         >
           {children}
         </FloatingSurface>
