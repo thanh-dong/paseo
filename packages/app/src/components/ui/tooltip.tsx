@@ -574,21 +574,26 @@ export function TooltipContent({
   // When `interactive`, the pointer entering/leaving the content only cancels or
   // schedules the shared close timer (never scheduleOpen) — that keeps this safe
   // from the hover feedback loop the Portal rendering is otherwise prone to.
-  const contentHoverProps =
-    isWeb && ctx.interactive && !ctx.openOnPress
-      ? ({
-          onPointerEnter: ctx.cancelClose,
-          onPointerLeave: ctx.scheduleClose,
-          onMouseEnter: ctx.cancelClose,
-          onMouseLeave: ctx.scheduleClose,
-        } as object)
-      : null;
+  const isInteractiveHover = isWeb && ctx.interactive && !ctx.openOnPress;
+  const contentHoverProps = isInteractiveHover
+    ? ({
+        onPointerEnter: ctx.cancelClose,
+        onPointerLeave: ctx.scheduleClose,
+        onMouseEnter: ctx.cancelClose,
+        onMouseLeave: ctx.scheduleClose,
+      } as object)
+    : null;
 
   if (isWeb) {
     return createPortal(
       <View pointerEvents="none" style={styles.portalOverlay}>
         <FloatingSurface
-          pointerEvents="none"
+          // Non-interactive tooltips stay pointerEvents="none" so they never steal
+          // hover/focus (see below). Interactive ones need "auto" here so the hover
+          // handlers above and any content controls (e.g. a Switch) are hit-testable —
+          // "none" is inherited by descendants otherwise, same as explorer-sidebar.tsx
+          // and left-sidebar.tsx's own pointerEvents="auto" overrides.
+          pointerEvents={isInteractiveHover ? "auto" : "none"}
           entering={FadeIn.duration(80)}
           exiting={FadeOut.duration(80)}
           collapsable={false}
