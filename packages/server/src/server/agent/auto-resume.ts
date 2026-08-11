@@ -1,8 +1,15 @@
 import type { Logger } from "pino";
 import type { ProviderUsage } from "../messages.js";
 import type { ProviderUsageService } from "../../services/quota-fetcher/service.js";
-import type { AgentManager } from "./agent-manager.js";
+import type { AgentManager, ManagedAgent } from "./agent-manager.js";
 import type { AgentStorage } from "./agent-storage.js";
+import {
+  ensureAgentLoaded as ensureAgentLoadedDefault,
+  type EnsureAgentLoadedDeps,
+} from "./agent-loading.js";
+
+type AutoResumeView = ReturnType<AgentManager["getAutoResumeView"]>;
+type EnsureAgentLoadedFn = (agentId: string, deps: EnsureAgentLoadedDeps) => Promise<ManagedAgent>;
 
 export const AUTO_RESUME_BUFFER_MS = 2 * 60_000;
 export const AUTO_RESUME_MAX_ATTEMPTS = 3;
@@ -39,6 +46,8 @@ export interface AutoResumeWatcherOptions {
   agentStorage: AgentStorage;
   logger: Logger;
   now?: () => number;
+  /** Test seam — defaults to the real ensureAgentLoaded from agent-loading.js. */
+  ensureAgentLoaded?: EnsureAgentLoadedFn;
 }
 
 export class AutoResumeWatcher {
@@ -47,6 +56,7 @@ export class AutoResumeWatcher {
   private readonly storage: AgentStorage;
   private readonly logger: Logger;
   private readonly now: () => number;
+  private readonly loadAgent: EnsureAgentLoadedFn;
   private readonly timers = new Map<string, NodeJS.Timeout>();
   private heartbeat: NodeJS.Timeout | null = null;
   private lastForcedFetchMs = 0;
@@ -57,6 +67,7 @@ export class AutoResumeWatcher {
     this.storage = options.agentStorage;
     this.logger = options.logger.child({ module: "auto-resume-watcher" });
     this.now = options.now ?? Date.now;
+    this.loadAgent = options.ensureAgentLoaded ?? ensureAgentLoadedDefault;
   }
 
   async start(): Promise<void> {
@@ -98,7 +109,7 @@ export class AutoResumeWatcher {
 
   /** Manual "Resume now": user overrides detection. Skips usage verification. */
   async triggerNow(agentId: string): Promise<void> {
-    const view = this.manager.getAutoResumeView(agentId);
+    const view = this.manager.getAutoResumeView(agentId) ?? (await this.loadViewForFire(agentId));
     if (!view) throw new Error(`Agent ${agentId} not found`);
     if (view.running) throw new Error("Agent is already running");
     this.clearTimer(agentId);
@@ -107,9 +118,22 @@ export class AutoResumeWatcher {
   }
 
   private async sweep(): Promise<void> {
+    const nowMs = this.now();
     for (const agentId of this.manager.listAutoResumeAgents()) {
       const view = this.manager.getAutoResumeView(agentId);
-      if (!view || view.running || view.pending) continue;
+      if (!view || view.running) continue;
+      if (view.pending) {
+        // Self-heal a pending resume whose timer never got (re-)armed — e.g. after a
+        // daemon restart raced the boot re-arm, or an in-process bug dropped the timer.
+        // A timer still counting down, or a future `at`, is left alone.
+        if (this.timers.has(agentId) || view.pending.at > nowMs) continue;
+        this.logger.warn(
+          { agentId, at: new Date(view.pending.at).toISOString() },
+          "Auto-resume sweep: re-arming stranded pending timer",
+        );
+        this.arm(agentId, view.pending.at, view.pending.attempt);
+        continue;
+      }
       await this.checkAgent(agentId, { forceRefresh: false });
     }
   }
@@ -139,7 +163,7 @@ export class AutoResumeWatcher {
   }
 
   private async fire(agentId: string, attempt: number): Promise<void> {
-    const view = this.manager.getAutoResumeView(agentId);
+    const view = this.manager.getAutoResumeView(agentId) ?? (await this.loadViewForFire(agentId));
     if (!view || !view.enabled || !view.pending) return;
     if (view.running) {
       // Someone resumed it already; nothing to do.
@@ -165,6 +189,57 @@ export class AutoResumeWatcher {
     await this.manager.setPendingAutoResume(agentId, null);
     await this.manager.runAgent(agentId, AUTO_RESUME_PROMPT);
     this.logger.info({ agentId }, "Auto-resume fired");
+  }
+
+  /**
+   * Boot-restored timers arm from AgentStorage.list() before any agent is loaded into the
+   * live map, so getAutoResumeView(agentId) returns null the first time fire()/triggerNow()
+   * run after a daemon restart. Load the agent the same way the schedule service does, then
+   * re-fetch the view. If the agent can't be loaded (missing or archived), clear whatever
+   * pending state is stranded so the app stops showing a stale "will resume" banner.
+   */
+  private async loadViewForFire(agentId: string): Promise<AutoResumeView> {
+    const record = await this.storage.get(agentId);
+    if (!record || record.archivedAt) {
+      await this.clearStrandedAutoResume(
+        agentId,
+        !record ? "agent missing from storage" : "agent archived",
+      );
+      return null;
+    }
+    try {
+      await this.loadAgent(agentId, {
+        agentManager: this.manager,
+        agentStorage: this.storage,
+        logger: this.logger,
+      });
+    } catch (error) {
+      this.logger.warn({ err: error, agentId }, "Auto-resume: failed to load agent for resume");
+      await this.clearStrandedAutoResume(agentId, "load failed");
+      return null;
+    }
+    const view = this.manager.getAutoResumeView(agentId);
+    if (!view) {
+      await this.clearStrandedAutoResume(agentId, "no live view after load");
+      return null;
+    }
+    return view;
+  }
+
+  /** Clears a pending auto-resume record that can no longer be acted on, logging why. */
+  private async clearStrandedAutoResume(agentId: string, reason: string): Promise<void> {
+    const view = this.manager.getAutoResumeView(agentId);
+    if (view) {
+      if (!view.pending) return;
+      await this.manager.setPendingAutoResume(agentId, null);
+      this.logger.warn({ agentId, reason }, "Cleared stranded auto-resume state (live agent)");
+      return;
+    }
+    const record = await this.storage.get(agentId);
+    if (record?.autoResume) {
+      await this.storage.upsert({ ...record, autoResume: undefined });
+      this.logger.warn({ agentId, reason }, "Cleared stranded auto-resume state (stored record)");
+    }
   }
 
   private async loadUsage(

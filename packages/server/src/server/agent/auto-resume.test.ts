@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import {
   AUTO_RESUME_BUFFER_MS,
+  AUTO_RESUME_HEARTBEAT_MS,
   AUTO_RESUME_MAX_ATTEMPTS,
   AUTO_RESUME_PROMPT,
 } from "./auto-resume.js";
 import { AutoResumeWatcher, selectAutoResumeAt } from "./auto-resume.js";
 import type { ProviderUsage } from "../messages.js";
-import type { AgentManager } from "./agent-manager.js";
+import type { AgentManager, ManagedAgent } from "./agent-manager.js";
 import type { AgentStorage, StoredAgentRecord } from "./agent-storage.js";
 import type {
   ProviderUsageService,
@@ -152,10 +153,36 @@ class StubUsageService {
 class StubAgentStorage {
   records: StoredAgentRecord[] = [];
   list = vi.fn(async (): Promise<StoredAgentRecord[]> => this.records);
+  get = vi.fn(
+    async (agentId: string): Promise<StoredAgentRecord | null> =>
+      this.records.find((record) => record.id === agentId) ?? null,
+  );
+  upsert = vi.fn(async (record: StoredAgentRecord): Promise<void> => {
+    const index = this.records.findIndex((existing) => existing.id === record.id);
+    if (index >= 0) {
+      this.records[index] = record;
+    } else {
+      this.records.push(record);
+    }
+  });
 
   asStorage(): AgentStorage {
     return this as unknown as AgentStorage;
   }
+}
+
+function makeRecord(agentId: string, overrides?: Partial<StoredAgentRecord>): StoredAgentRecord {
+  return {
+    id: agentId,
+    provider: "claude",
+    cwd: "/workspace/project",
+    createdAt: "2026-08-01T00:00:00.000Z",
+    updatedAt: "2026-08-01T00:00:00.000Z",
+    labels: {},
+    lastStatus: "idle",
+    config: null,
+    ...overrides,
+  };
 }
 
 function makeLogger(): Logger {
@@ -357,5 +384,91 @@ describe("AutoResumeWatcher", () => {
 
     await vi.advanceTimersByTimeAsync(RESET_AT - Date.now() + 1000);
     expect(manager.runAgent).not.toHaveBeenCalled();
+  });
+
+  test("fire loads a boot-restored, disk-only agent and resumes once the window has reset", async () => {
+    // After a daemon restart the manager's live agent map starts empty; only
+    // AgentStorage has the record. start() arms a timer from storage alone, so
+    // fire() must load the agent on demand instead of finding a null view.
+    const agentId = "boot-agent";
+    const at = NOW + 5000;
+    storage.records = [makeRecord(agentId, { autoResume: { at, attempt: 1 } })];
+    usageService.nextUsage = usage([win({})]); // window has reset by fire time
+
+    let loadCalls = 0;
+    watcher = new AutoResumeWatcher({
+      agentManager: manager.asManager(),
+      providerUsageService: usageService.asService(),
+      agentStorage: storage.asStorage(),
+      logger: makeLogger(),
+      now: () => Date.now(),
+      ensureAgentLoaded: async (loadedAgentId) => {
+        loadCalls += 1;
+        expect(loadedAgentId).toBe(agentId);
+        // Simulate the manager loading the stored agent into its live map.
+        manager.views.set(agentId, {
+          enabled: true,
+          pending: { at, attempt: 1 },
+          provider: "claude",
+          running: false,
+          archived: false,
+          lastUserMessageAt: null,
+        });
+        return {} as unknown as ManagedAgent;
+      },
+    });
+
+    await watcher.start();
+    expect(manager.getAutoResumeView(agentId)).toBeNull();
+
+    await vi.advanceTimersByTimeAsync(at - NOW);
+
+    await vi.waitFor(() => {
+      expect(loadCalls).toBe(1);
+      expect(manager.runAgent).toHaveBeenCalledWith(agentId, AUTO_RESUME_PROMPT);
+    });
+  });
+
+  test("fire clears the stranded stored autoResume when the agent was archived before firing", async () => {
+    const agentId = "archived-agent";
+    const at = NOW + 5000;
+    const record = makeRecord(agentId, { autoResume: { at, attempt: 1 } });
+    storage.records = [record];
+
+    // start() arms the timer while the record is still unarchived.
+    await watcher.start();
+    // Simulate the agent being archived after the boot timer armed but before it fires.
+    storage.records[0] = { ...record, archivedAt: "2026-08-10T00:00:00.000Z" };
+
+    await vi.advanceTimersByTimeAsync(at - NOW);
+
+    await vi.waitFor(() => {
+      expect(storage.upsert).toHaveBeenCalled();
+    });
+    expect(storage.records.find((r) => r.id === agentId)?.autoResume).toBeUndefined();
+    expect(manager.runAgent).not.toHaveBeenCalled();
+  });
+
+  test("sweep re-arms a stale pending entry that has no armed timer", async () => {
+    // Simulate a pending resume whose timer was dropped (e.g. daemon restart raced the
+    // boot re-arm): the manager reports a past-due `pending.at`, but the watcher never
+    // scheduled a timeout for it because storage never saw a record to arm from.
+    manager.views.set("a1", {
+      enabled: true,
+      pending: { at: NOW - 1000, attempt: 1 },
+      provider: "claude",
+      running: false,
+      archived: false,
+      lastUserMessageAt: null,
+    });
+    usageService.nextUsage = usage([win({})]); // window already reset
+
+    await watcher.start();
+    await vi.advanceTimersByTimeAsync(AUTO_RESUME_HEARTBEAT_MS + 5000);
+
+    await vi.waitFor(() => {
+      expect(manager.runAgent).toHaveBeenCalledWith("a1", AUTO_RESUME_PROMPT);
+    });
+    expect(manager.setPendingAutoResume).toHaveBeenLastCalledWith("a1", null);
   });
 });
