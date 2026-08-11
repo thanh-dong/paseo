@@ -1673,6 +1673,10 @@ export const zhCN: TranslationResources = {
     tokens: "{{used}} / {{max}} tokens",
     sessionCost: "会话费用 {{cost}}",
     accessibility: "上下文窗口已使用 {{percentage}}%",
+    autoResume: {
+      toggle: "限额重置后自动恢复",
+      scheduled: "将于 {{time}} 恢复",
+    },
   },
   review: {
     comment: {

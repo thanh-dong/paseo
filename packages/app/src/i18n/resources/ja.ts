@@ -1709,6 +1709,10 @@ export const ja: TranslationResources = {
     tokens: "{{used}} / {{max}}トークン",
     sessionCost: "セッションコスト: {{cost}}",
     accessibility: "コンテキストウィンドウ{{percentage}}%使用",
+    autoResume: {
+      toggle: "上限がリセットされたら自動的に再開",
+      scheduled: "{{time}}に再開",
+    },
   },
   review: {
     comment: {

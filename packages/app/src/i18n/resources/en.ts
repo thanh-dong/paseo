@@ -1704,6 +1704,10 @@ export const en = {
     tokens: "{{used}} / {{max}} tokens",
     sessionCost: "Session cost {{cost}}",
     accessibility: "Context window {{percentage}}% used",
+    autoResume: {
+      toggle: "Auto-resume when limit resets",
+      scheduled: "Resumes at {{time}}",
+    },
   },
   review: {
     comment: {

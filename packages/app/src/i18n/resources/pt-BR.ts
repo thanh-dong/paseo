@@ -1722,6 +1722,10 @@ export const ptBR: TranslationResources = {
     tokens: "{{used}} / {{max}} tokens",
     sessionCost: "Custo da sessão {{cost}}",
     accessibility: "Janela de contexto {{percentage}}% usada",
+    autoResume: {
+      toggle: "Retomar automaticamente quando o limite for redefinido",
+      scheduled: "Retoma às {{time}}",
+    },
   },
   review: {
     comment: {

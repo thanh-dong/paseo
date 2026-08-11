@@ -1693,6 +1693,10 @@ export const ar: TranslationResources = {
     tokens: "رموز{{used}}/{{max}}",
     sessionCost: "تكلفة الجلسة{{cost}}",
     accessibility: "تم استخدام نافذة السياق{{percentage}}%",
+    autoResume: {
+      toggle: "استئناف تلقائي عند إعادة تعيين الحد",
+      scheduled: "الاستئناف في {{time}}",
+    },
   },
   review: {
     comment: {

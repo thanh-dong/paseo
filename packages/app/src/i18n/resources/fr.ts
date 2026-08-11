@@ -1740,6 +1740,10 @@ export const fr: TranslationResources = {
     tokens: "Jetons{{used}}/{{max}}",
     sessionCost: "Coût de la séance{{cost}}",
     accessibility: "Fenêtre contextuelle{{percentage}}% utilisé",
+    autoResume: {
+      toggle: "Reprendre automatiquement à la réinitialisation de la limite",
+      scheduled: "Reprise à {{time}}",
+    },
   },
   review: {
     comment: {

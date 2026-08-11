@@ -1727,6 +1727,10 @@ export const ru: TranslationResources = {
     tokens: "Токены{{used}}/{{max}}",
     sessionCost: "Стоимость сеанса{{cost}}",
     accessibility: "Контекстное окно{{percentage}}% использовано",
+    autoResume: {
+      toggle: "Возобновлять автоматически после сброса лимита",
+      scheduled: "Возобновление в {{time}}",
+    },
   },
   review: {
     comment: {

@@ -1736,6 +1736,10 @@ export const es: TranslationResources = {
     tokens: "Fichas{{used}}/{{max}}",
     sessionCost: "Costo de la sesión{{cost}}",
     accessibility: "Ventana de contexto{{percentage}}% utilizada",
+    autoResume: {
+      toggle: "Reanudar automáticamente cuando se restablezca el límite",
+      scheduled: "Se reanuda a las {{time}}",
+    },
   },
   review: {
     comment: {
