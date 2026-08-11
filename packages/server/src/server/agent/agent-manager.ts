@@ -313,6 +313,16 @@ function resolveInitialAttention(input: AttentionState | undefined): AttentionSt
   };
 }
 
+function resolveInitialAutoResume(options: {
+  autoResumeOnLimit?: boolean;
+  autoResume?: { at: number; attempt: number };
+}): { autoResumeOnLimit: boolean; autoResume?: { at: number; attempt: number } } {
+  return {
+    autoResumeOnLimit: options.autoResumeOnLimit ?? false,
+    autoResume: options.autoResume,
+  };
+}
+
 interface StreamEventFlags {
   shouldDispatchEvent: boolean;
   shouldNotifyWaiters: boolean;
@@ -357,6 +367,8 @@ interface ManagedAgentBase {
   activeTurnStartedAt: Date | null;
   lastUsage?: AgentUsage;
   lastError?: string;
+  autoResumeOnLimit: boolean;
+  autoResume?: { at: number; attempt: number };
   attention: AttentionState;
   foregroundTurnWaiters: Set<ForegroundTurnWaiter>;
   finalizedForegroundTurnIds: Set<string>;
@@ -1299,6 +1311,8 @@ export class AgentManager {
     const preservedLastUsage = existing.lastUsage;
     const preservedLastError = existing.lastError;
     const preservedAttention = existing.attention;
+    const preservedAutoResumeOnLimit = existing.autoResumeOnLimit;
+    const preservedAutoResume = existing.autoResume;
     const handle = existing.persistence;
     const provider = handle?.provider ?? existing.provider;
     const client = this.requireClient(provider);
@@ -1352,6 +1366,8 @@ export class AgentManager {
         lastUsage: preservedLastUsage,
         lastError: preservedLastError,
         attention: preservedAttention,
+        autoResumeOnLimit: preservedAutoResumeOnLimit,
+        autoResume: preservedAutoResume,
       });
     } finally {
       if (!handedToRegistration) {
@@ -1609,6 +1625,8 @@ export class AgentManager {
         lastUserMessageAt: record.lastUserMessageAt ? new Date(record.lastUserMessageAt) : null,
         lastUsage: undefined,
         lastError: record.lastError ?? undefined,
+        autoResumeOnLimit: record.autoResumeOnLimit ?? false,
+        autoResume: record.autoResume,
         attention: { requiresAttention: false },
         internal: record.internal,
         labels: record.labels,
@@ -2826,6 +2844,8 @@ export class AgentManager {
       historyPrimed?: boolean;
       lastUsage?: AgentUsage;
       lastError?: string;
+      autoResumeOnLimit?: boolean;
+      autoResume?: { at: number; attempt: number };
       attention?: AttentionState;
       initialTitle?: string | null;
       publishWhenReady?: boolean;
@@ -2980,6 +3000,8 @@ export class AgentManager {
           historyPrimed?: boolean;
           lastUsage?: AgentUsage;
           lastError?: string;
+          autoResumeOnLimit?: boolean;
+          autoResume?: { at: number; attempt: number };
           attention?: AttentionState;
           persistence?: AgentPersistenceHandle;
           workspaceId?: string;
@@ -2988,6 +3010,7 @@ export class AgentManager {
       | undefined;
   }): ActiveManagedAgent {
     const { resolvedAgentId, session, config, now, durableTimelineHasRows, options } = params;
+    const autoResumeState = resolveInitialAutoResume(options ?? {});
     return {
       id: resolvedAgentId,
       provider: config.provider,
@@ -3021,6 +3044,8 @@ export class AgentManager {
       lastUserMessageAt: options?.lastUserMessageAt ?? null,
       lastUsage: options?.lastUsage,
       lastError: options?.lastError,
+      autoResumeOnLimit: autoResumeState.autoResumeOnLimit,
+      autoResume: autoResumeState.autoResume,
       attention: resolveInitialAttention(options?.attention),
       internal: config.internal ?? false,
       labels: options?.labels ?? {},
