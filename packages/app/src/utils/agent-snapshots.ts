@@ -41,6 +41,7 @@ export function normalizeAgentSnapshot(snapshot: AgentSnapshotPayload, serverId:
     ? new Date(snapshot.attentionTimestamp)
     : null;
   const archivedAt = snapshot.archivedAt ? new Date(snapshot.archivedAt) : null;
+  const autoResumeAt = snapshot.autoResumeAt ? new Date(snapshot.autoResumeAt) : null;
   const parentAgentId = getParentAgentIdFromLabels(snapshot.labels);
   // COMPAT(agentTurnIdentity): added in v0.2.6, remove after 2027-01-31 once daemon floor >= v0.2.6.
   // Old daemons expose only status. Normalize that legacy signal once so the rest
@@ -65,6 +66,8 @@ export function normalizeAgentSnapshot(snapshot: AgentSnapshotPayload, serverId:
     runtimeInfo: snapshot.runtimeInfo,
     lastUsage: snapshot.lastUsage,
     lastError: snapshot.lastError ?? null,
+    autoResumeOnLimit: snapshot.autoResumeOnLimit ?? false,
+    autoResumeAt,
     title: snapshot.title ?? null,
     cwd: snapshot.cwd,
     workspaceId: snapshot.workspaceId,

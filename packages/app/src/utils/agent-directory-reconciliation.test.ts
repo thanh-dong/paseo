@@ -61,6 +61,7 @@ function replica(id: string, status: Agent["status"]): Agent {
     lastUserMessageAt: null,
     attentionTimestamp: null,
     archivedAt: null,
+    autoResumeAt: null,
     parentAgentId: null,
   };
 }
