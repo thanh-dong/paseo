@@ -232,6 +232,11 @@ export const ru: TranslationResources = {
       callout: "Этот агент находится в архиве",
       unarchive: "Разархивировать",
     },
+    autoResume: {
+      title: "Достигнут лимит использования",
+      description: "Эта сессия автоматически возобновится в {{time}}.",
+      resumeNow: "Возобновить сейчас",
+    },
   },
   sessions: {
     title: "История",

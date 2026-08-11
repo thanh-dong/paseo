@@ -230,6 +230,11 @@ export const zhCN: TranslationResources = {
       callout: "此 Agent 已归档",
       unarchive: "取消归档",
     },
+    autoResume: {
+      title: "已达到使用限制",
+      description: "此会话将于 {{time}} 自动恢复。",
+      resumeNow: "立即恢复",
+    },
   },
   sessions: {
     title: "历史",

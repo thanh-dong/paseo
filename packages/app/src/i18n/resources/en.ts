@@ -229,6 +229,11 @@ export const en = {
       callout: "This agent is archived",
       unarchive: "Unarchive",
     },
+    autoResume: {
+      title: "Usage limit reached",
+      description: "This session will automatically resume at {{time}}.",
+      resumeNow: "Resume now",
+    },
   },
   sessions: {
     title: "History",

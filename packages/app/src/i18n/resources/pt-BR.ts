@@ -233,6 +233,11 @@ export const ptBR: TranslationResources = {
       callout: "Este agente está arquivado",
       unarchive: "Desarquivar",
     },
+    autoResume: {
+      title: "Limite de uso atingido",
+      description: "Esta sessão será retomada automaticamente às {{time}}.",
+      resumeNow: "Retomar agora",
+    },
   },
   sessions: {
     title: "Histórico de agentes",

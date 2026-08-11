@@ -234,6 +234,11 @@ export const fr: TranslationResources = {
       callout: "Cet agent est archivé",
       unarchive: "Désarchiver",
     },
+    autoResume: {
+      title: "Limite d'utilisation atteinte",
+      description: "Cette session reprendra automatiquement à {{time}}.",
+      resumeNow: "Reprendre maintenant",
+    },
   },
   sessions: {
     title: "Historique",

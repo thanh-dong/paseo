@@ -231,6 +231,11 @@ export const ko: TranslationResources = {
       callout: "이 에이전트는 보관되었습니다",
       unarchive: "보관 해제",
     },
+    autoResume: {
+      title: "사용량 한도에 도달했습니다",
+      description: "이 세션은 {{time}}에 자동으로 재개됩니다.",
+      resumeNow: "지금 재개",
+    },
   },
   sessions: {
     title: "기록",

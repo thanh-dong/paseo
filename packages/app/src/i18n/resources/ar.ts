@@ -230,6 +230,11 @@ export const ar: TranslationResources = {
       callout: "تمت أرشفة هذا الوكيل",
       unarchive: "إلغاء الأرشفة",
     },
+    autoResume: {
+      title: "تم بلوغ حد الاستخدام",
+      description: "ستستأنف هذه الجلسة تلقائيًا في {{time}}.",
+      resumeNow: "استئناف الآن",
+    },
   },
   sessions: {
     title: "السجل",
