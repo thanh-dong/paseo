@@ -756,6 +756,8 @@ export const AgentSnapshotPayloadSchema = z.object({
   runtimeInfo: AgentRuntimeInfoSchema.optional(),
   lastUsage: AgentUsageSchema.optional(),
   lastError: z.string().optional(),
+  autoResumeOnLimit: z.boolean().optional(),
+  autoResumeAt: z.number().int().nonnegative().optional(),
   title: z.string().nullable(),
   labels: z.record(z.string(), z.string()).default({}),
   requiresAttention: z.boolean().optional(),
@@ -1552,6 +1554,29 @@ export const AgentDetachRequestMessageSchema = z.object({
 
 export const AgentDetachResponseMessageSchema = z.object({
   type: z.literal("agent.detach.response"),
+  payload: AgentActionResponsePayloadSchema,
+});
+
+export const AgentAutoResumeSetRequestMessageSchema = z.object({
+  type: z.literal("agent.auto_resume.set.request"),
+  agentId: z.string(),
+  enabled: z.boolean(),
+  requestId: z.string(),
+});
+
+export const AgentAutoResumeSetResponseMessageSchema = z.object({
+  type: z.literal("agent.auto_resume.set.response"),
+  payload: AgentActionResponsePayloadSchema,
+});
+
+export const AgentAutoResumeTriggerRequestMessageSchema = z.object({
+  type: z.literal("agent.auto_resume.trigger.request"),
+  agentId: z.string(),
+  requestId: z.string(),
+});
+
+export const AgentAutoResumeTriggerResponseMessageSchema = z.object({
+  type: z.literal("agent.auto_resume.trigger.response"),
   payload: AgentActionResponsePayloadSchema,
 });
 
@@ -2703,6 +2728,8 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   SetAgentThinkingRequestMessageSchema,
   SetAgentFeatureRequestMessageSchema,
   AgentDetachRequestMessageSchema,
+  AgentAutoResumeSetRequestMessageSchema,
+  AgentAutoResumeTriggerRequestMessageSchema,
   AgentRewindRequestMessageSchema,
   AgentPermissionResponseMessageSchema,
   CheckoutStatusRequestSchema,
@@ -3071,6 +3098,8 @@ export const ServerInfoStatusPayloadSchema = z
         fsEntryDuplicate: z.boolean().optional(),
         // COMPAT(checkoutDiscardChanges): added in v0.3.0, remove gate after 2027-02-08.
         checkoutDiscardChanges: z.boolean().optional(),
+        // COMPAT(autoResumeOnLimit): added in v0.3.2, remove gate once daemon floor >= v0.3.2.
+        autoResumeOnLimit: z.boolean().optional(),
       })
       .optional(),
   })
@@ -5649,6 +5678,8 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   SetAgentThinkingResponseMessageSchema,
   SetAgentFeatureResponseMessageSchema,
   AgentDetachResponseMessageSchema,
+  AgentAutoResumeSetResponseMessageSchema,
+  AgentAutoResumeTriggerResponseMessageSchema,
   AgentRewindResponseMessageSchema,
   UpdateAgentResponseMessageSchema,
   ProjectRenameResponseSchema,
@@ -5843,6 +5874,12 @@ export type SetAgentModelResponseMessage = z.infer<typeof SetAgentModelResponseM
 export type SetAgentThinkingResponseMessage = z.infer<typeof SetAgentThinkingResponseMessageSchema>;
 export type SetAgentFeatureResponseMessage = z.infer<typeof SetAgentFeatureResponseMessageSchema>;
 export type AgentDetachResponseMessage = z.infer<typeof AgentDetachResponseMessageSchema>;
+export type AgentAutoResumeSetResponseMessage = z.infer<
+  typeof AgentAutoResumeSetResponseMessageSchema
+>;
+export type AgentAutoResumeTriggerResponseMessage = z.infer<
+  typeof AgentAutoResumeTriggerResponseMessageSchema
+>;
 export type AgentRewindResponseMessage = z.infer<typeof AgentRewindResponseMessageSchema>;
 export type UpdateAgentResponseMessage = z.infer<typeof UpdateAgentResponseMessageSchema>;
 export type ProjectRenameResponse = z.infer<typeof ProjectRenameResponseSchema>;
@@ -6006,6 +6043,12 @@ export type SetAgentModelRequestMessage = z.infer<typeof SetAgentModelRequestMes
 export type SetAgentThinkingRequestMessage = z.infer<typeof SetAgentThinkingRequestMessageSchema>;
 export type SetAgentFeatureRequestMessage = z.infer<typeof SetAgentFeatureRequestMessageSchema>;
 export type AgentDetachRequestMessage = z.infer<typeof AgentDetachRequestMessageSchema>;
+export type AgentAutoResumeSetRequestMessage = z.infer<
+  typeof AgentAutoResumeSetRequestMessageSchema
+>;
+export type AgentAutoResumeTriggerRequestMessage = z.infer<
+  typeof AgentAutoResumeTriggerRequestMessageSchema
+>;
 export type AgentPermissionResponseMessage = z.infer<typeof AgentPermissionResponseMessageSchema>;
 export type CheckoutStatusRequest = z.infer<typeof CheckoutStatusRequestSchema>;
 export type CheckoutStatusResponse = z.infer<typeof CheckoutStatusResponseSchema>;
