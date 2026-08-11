@@ -129,6 +129,8 @@ import type { RequestedSpeechProviders } from "./speech/speech-types.js";
 import { createSpeechService } from "./speech/speech-runtime.js";
 import { AgentManager } from "./agent/agent-manager.js";
 import { AgentStorage } from "./agent/agent-storage.js";
+import { AutoResumeWatcher } from "./agent/auto-resume.js";
+import { ProviderUsageService } from "../services/quota-fetcher/service.js";
 import { attachAgentStoragePersistence } from "./persistence-hooks.js";
 import { createAgentMcpServer } from "./agent/mcp-server.js";
 import {
@@ -834,6 +836,7 @@ export async function createPaseoDaemon(
     mcpAuthToken: agentMcpAuthToken,
     logger,
   });
+  const providerUsageService = new ProviderUsageService({ logger });
 
   const detachAgentStoragePersistence = attachAgentStoragePersistence(
     logger,
@@ -1214,6 +1217,14 @@ export async function createPaseoDaemon(
       logger.warn({ err: error, agentId }, "Failed to complete schedules for archived agent");
     }
   });
+  const autoResumeWatcher = new AutoResumeWatcher({
+    agentManager,
+    providerUsageService,
+    agentStorage,
+    logger,
+  });
+  agentManager.setOnAgentTurnEnded(({ agentId }) => autoResumeWatcher.onTurnEnded(agentId));
+  await autoResumeWatcher.start();
   logger.info({ elapsed: elapsed() }, "Schedule service initialized");
   logger.info({ elapsed: elapsed() }, "Loading persisted agent registry");
   const persistedRecords = await agentStorage.list();
@@ -1552,6 +1563,8 @@ export async function createPaseoDaemon(
               browserToolsBroker,
               hubRelationships,
               workspaceSetupRuntime,
+              providerUsageService,
+              autoResumeWatcher,
             );
             relayRuntime = createRelayRuntime({
               config: {
@@ -1619,6 +1632,7 @@ export async function createPaseoDaemon(
     terminalManager.killAll();
     speechService.stop();
     await scheduleService.stop().catch(() => undefined);
+    autoResumeWatcher.stop();
     await relayRuntime?.stop().catch(() => undefined);
     if (wsServer) {
       await wsServer.close();
