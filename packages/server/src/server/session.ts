@@ -2019,6 +2019,8 @@ export class Session {
         return this.agentConfigSession.handleSetAgentFeatureRequest(msg);
       case "set_agent_thinking_request":
         return this.agentConfigSession.handleSetAgentThinkingRequest(msg);
+      case "agent.config.apply.request":
+        return this.agentConfigSession.handleAgentConfigApplyRequest(msg);
       case "get_daemon_config_request":
         this.emit({
           type: "get_daemon_config_response",
