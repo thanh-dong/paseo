@@ -37,6 +37,10 @@ be in flight.
 
 Cancellation changes lifecycle state only after the provider acknowledges the interrupt or emits a terminal turn event. If the interrupt is rejected or times out, the agent remains `running` with its active foreground turn intact. Follow-up actions such as replacement, reload, rewind, and Stop must report that failure instead of accepting work they cannot perform. Synthesizing a local cancellation without provider acknowledgment creates a split-brain session: Paseo accepts a new prompt while the provider still owns the previous foreground turn.
 
+## Auto-resume on usage limit
+
+Auto-resume is a per-agent toggle in the context-window usage popup. Detection is numeric, read from the provider's usage windows (`remainingPct`/`resetsAt`), never from message text — the SDK reports a limit hit inside an otherwise successful turn, so there is no error to pattern-match. When a turn ends with a window exhausted, the watcher arms a timer for that window's reset and re-checks usage before firing (verify-before-fire), with a bounded number of reattempts if the window is still exhausted at the scheduled time. The agent panel also offers a manual "Resume now" override that skips verification and resumes immediately. See `packages/server/src/server/agent/auto-resume.ts`.
+
 ## Relationships
 
 Agents can launch other agents via the agent-scoped `create_agent` MCP tool. Agent-scoped creation is always asynchronous and always stamps `paseo.parent-agent-id`, pointing back at the caller. Omit `workspaceId` to use the caller's workspace, or pass an existing workspace ID returned by `create_workspace`. Placement never changes parentage.

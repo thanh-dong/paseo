@@ -3,9 +3,13 @@ import { Pressable, Text, View } from "react-native";
 import Svg, { Circle } from "react-native-svg";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
+import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ProviderUsageTooltipSection } from "@/provider-usage/tooltip-section";
 import { useProviderUsage } from "@/provider-usage/use-provider-usage";
+import { useHostFeature } from "@/runtime/host-features";
+import { useSessionStore } from "@/stores/session-store";
+import { formatMessageTimestamp } from "@/utils/time";
 import { formatTokenCount } from "./context-window-meter.utils";
 
 interface ContextWindowMeterProps {
@@ -20,6 +24,7 @@ interface ContextWindowMeterProps {
   pending?: boolean;
   /** Optional glyph envelope for icon-toolbar alignment. */
   glyphSize?: number;
+  agentId?: string;
 }
 
 const SVG_SIZE = 14;
@@ -105,6 +110,7 @@ export function ContextWindowMeter({
   provider,
   pending = false,
   glyphSize,
+  agentId,
 }: ContextWindowMeterProps) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
@@ -173,6 +179,7 @@ export function ContextWindowMeter({
       delayDuration={0}
       enabledOnDesktop
       enabledOnMobile
+      interactive
     >
       <TooltipTrigger asChild triggerRefProp="ref">
         <Pressable
@@ -234,9 +241,73 @@ export function ContextWindowMeter({
             </Text>
           ) : null}
           <ProviderUsageTooltipSection view={providerUsageView} activeProviderId={provider} />
+          <AutoResumeToggleSection serverId={serverId} agentId={agentId} provider={provider} />
         </View>
       </TooltipContent>
     </Tooltip>
+  );
+}
+
+function AutoResumeToggleSection({
+  serverId,
+  agentId,
+  provider,
+}: {
+  serverId?: string;
+  agentId?: string;
+  provider?: string | null;
+}) {
+  const { t } = useTranslation();
+  // COMPAT(autoResumeOnLimit): hide until the daemon advertises the feature.
+  const supported = useHostFeature(serverId ?? null, "autoResumeOnLimit");
+  const agent = useSessionStore((state) =>
+    serverId && agentId ? (state.sessions[serverId]?.agents?.get(agentId) ?? null) : null,
+  );
+  const [busy, setBusy] = useState(false);
+  const onToggle = useCallback(
+    async (next: boolean) => {
+      if (!serverId || !agentId) return;
+      const client = useSessionStore.getState().sessions[serverId]?.client;
+      if (!client) return;
+      setBusy(true);
+      try {
+        await client.setAgentAutoResume(agentId, next);
+      } catch {
+        // snapshot stream is the source of truth; a failed call simply leaves the switch as-is
+      } finally {
+        setBusy(false);
+      }
+    },
+    [serverId, agentId],
+  );
+  const handleValueChange = useCallback(
+    (next: boolean) => {
+      if (busy) return;
+      void onToggle(next);
+    },
+    [busy, onToggle],
+  );
+  if (!supported || !serverId || !agentId || !agent) return null;
+  // Only providers whose usage the daemon can read can be watched.
+  if (provider !== "claude" && provider !== "codex") return null;
+
+  const enabled = agent.autoResumeOnLimit ?? false;
+
+  return (
+    <>
+      <View style={styles.autoResumeDivider} />
+      <View style={styles.autoResumeRow}>
+        <Text style={styles.tooltipText}>{t("contextWindow.autoResume.toggle")}</Text>
+        <Switch value={enabled} onValueChange={handleValueChange} disabled={busy} />
+      </View>
+      {agent.autoResumeAt ? (
+        <Text style={styles.tooltipDetail}>
+          {t("contextWindow.autoResume.scheduled", {
+            time: formatMessageTimestamp(agent.autoResumeAt),
+          })}
+        </Text>
+      ) : null}
+    </>
   );
 }
 
@@ -287,5 +358,17 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.xs,
     lineHeight: theme.fontSize.xs * 1.4,
+  },
+  autoResumeDivider: {
+    height: 1,
+    backgroundColor: theme.colors.borderAccent,
+    marginVertical: theme.spacing[2],
+    marginHorizontal: -theme.spacing[2],
+  },
+  autoResumeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: theme.spacing[2],
   },
 }));

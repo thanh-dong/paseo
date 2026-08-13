@@ -1,3 +1,5 @@
+import { Alert as InlineAlert } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import type { TFunction } from "i18next";
@@ -86,6 +88,7 @@ import {
 } from "@/stores/session-store";
 import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
 import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
+import { useHostFeature } from "@/runtime/host-features";
 import type { Theme } from "@/styles/theme";
 import {
   useHideFinishedProviderSubagents,
@@ -98,6 +101,7 @@ import type { PendingPermission } from "@/types/shared";
 import type { StreamItem } from "@/types/stream";
 import { getInitDeferred, getInitKey } from "@/utils/agent-initialization";
 import { derivePendingPermissionKey, normalizeAgentSnapshot } from "@/utils/agent-snapshots";
+import { formatMessageTimestamp } from "@/utils/time";
 import { applyLegacyDaemonWorkspaceOwnership } from "@/workspace/legacy-daemon-workspaces";
 import type { WorkspaceFileOpenRequest } from "@/workspace/file-open";
 import { navigateToAgent } from "@/utils/navigate-to-agent";
@@ -118,6 +122,7 @@ interface ChatAgentStateShape {
   runtimeInfo?: Agent["runtimeInfo"];
   features?: Agent["features"];
   lastError?: Agent["lastError"] | null;
+  autoResumeAt?: Agent["autoResumeAt"] | null;
 }
 
 const RECONNECT_TOAST_DELAY_MS = 1_000;
@@ -172,6 +177,7 @@ function selectChatAgentState(
     runtimeInfo: agent.runtimeInfo,
     features: agent.features,
     lastError: agent.lastError ?? null,
+    autoResumeAt: agent.autoResumeAt ?? null,
     archivedAt: agent.archivedAt ?? null,
     requiresAttention: agent.requiresAttention ?? false,
     attentionReason: agent.attentionReason ?? null,
@@ -199,6 +205,7 @@ function buildChatAgentFromState(
     runtimeInfo: state.runtimeInfo,
     features: state.features,
     lastError: state.lastError ?? null,
+    autoResumeAt: state.autoResumeAt ?? null,
     projectPlacement,
   };
 }
@@ -727,6 +734,7 @@ function AgentPanelBody({
           runtimeInfo: agentState.runtimeInfo,
           features: agentState.features,
           lastError: agentState.lastError ?? null,
+          autoResumeAt: agentState.autoResumeAt ?? null,
           projectPlacement,
         }
       : null;
@@ -1218,6 +1226,7 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
   onOpenWorkspaceFile?: (request: WorkspaceFileOpenRequest) => void;
 }) {
   const { t } = useTranslation();
+  const supportsAutoResumeOnLimit = useHostFeature(serverId, "autoResumeOnLimit");
   const rawAgentInputDraft = useAgentInputDraft({
     draftKey: buildDraftStoreKey({
       serverId,
@@ -1294,12 +1303,41 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
     <ReanimatedAnimated.View style={animatedContentStyle}>{streamSection}</ReanimatedAnimated.View>
   );
   const contentContainer = <View style={styles.contentContainer}>{streamContent}</View>;
+  const autoResumeAt =
+    supportsAutoResumeOnLimit &&
+    agentState.autoResumeAt instanceof Date &&
+    effectiveAgent.status !== "running"
+      ? agentState.autoResumeAt
+      : null;
+  const handleResumeNow = useCallback(() => {
+    const client = useSessionStore.getState().sessions[serverId]?.client;
+    if (!client) return;
+    void client.triggerAgentAutoResume(agentId).catch(() => {
+      // Snapshot stream is the source of truth; a failed manual resume simply
+      // leaves the banner in place until the scheduled auto-resume fires.
+    });
+  }, [serverId, agentId]);
 
   return (
     <RewindComposerRestoreProvider text={agentInputDraft.text} setText={agentInputDraft.setText}>
       <View style={styles.root}>
         <FileDropZone style={styles.container} disabled={isArchivingCurrentAgent}>
           {contentContainer}
+
+          {autoResumeAt ? (
+            <InlineAlert
+              variant="warning"
+              title={t("agentPanel.autoResume.title")}
+              description={t("agentPanel.autoResume.description", {
+                time: formatMessageTimestamp(autoResumeAt),
+              })}
+              testID="agent-auto-resume-banner"
+            >
+              <Button variant="outline" size="sm" onPress={handleResumeNow}>
+                {t("agentPanel.autoResume.resumeNow")}
+              </Button>
+            </InlineAlert>
+          ) : null}
 
           {showHistorySyncError ? (
             <SidebarCallout

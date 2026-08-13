@@ -224,6 +224,8 @@ export type AgentAttentionCallback = (params: {
 
 export type AgentArchivedCallback = (agentId: string) => Promise<void> | void;
 
+export type AgentTurnEndedCallback = (params: { agentId: string; provider: AgentProvider }) => void;
+
 export interface ProviderAvailability {
   provider: AgentProvider;
   available: boolean;
@@ -268,6 +270,7 @@ export interface AgentManagerOptions {
   idFactory?: () => string;
   registry?: AgentStorage;
   onAgentAttention?: AgentAttentionCallback;
+  onAgentTurnEnded?: AgentTurnEndedCallback;
   onWorkspaceStateMayHaveChanged?: (params: { cwd: string }) => void;
   durableTimelineStore?: AgentTimelineStore;
   terminalManager?: TerminalManager | null;
@@ -315,6 +318,16 @@ function resolveInitialAttention(input: AttentionState | undefined): AttentionSt
   };
 }
 
+function resolveInitialAutoResume(options: {
+  autoResumeOnLimit?: boolean;
+  autoResume?: { at: number; attempt: number };
+}): { autoResumeOnLimit: boolean; autoResume?: { at: number; attempt: number } } {
+  return {
+    autoResumeOnLimit: options.autoResumeOnLimit ?? false,
+    autoResume: options.autoResume,
+  };
+}
+
 interface StreamEventFlags {
   shouldDispatchEvent: boolean;
   shouldNotifyWaiters: boolean;
@@ -359,6 +372,8 @@ interface ManagedAgentBase {
   activeTurnStartedAt: Date | null;
   lastUsage?: AgentUsage;
   lastError?: string;
+  autoResumeOnLimit: boolean;
+  autoResume?: { at: number; attempt: number };
   attention: AttentionState;
   foregroundTurnWaiters: Set<ForegroundTurnWaiter>;
   finalizedForegroundTurnIds: Set<string>;
@@ -663,6 +678,7 @@ export class AgentManager {
   private appendSystemPrompt: string;
   private onAgentAttention?: AgentAttentionCallback;
   private onAgentArchived?: AgentArchivedCallback;
+  private onAgentTurnEnded?: AgentTurnEndedCallback;
   private onWorkspaceStateMayHaveChanged?: (params: { cwd: string }) => void;
   private logger: Logger;
   private readonly rescueTimeouts: Required<AgentManagerRescueTimeouts>;
@@ -673,6 +689,7 @@ export class AgentManager {
     this.registry = options?.registry;
     this.durableTimelineStore = options?.durableTimelineStore;
     this.onAgentAttention = options?.onAgentAttention;
+    this.onAgentTurnEnded = options?.onAgentTurnEnded;
     this.onWorkspaceStateMayHaveChanged = options?.onWorkspaceStateMayHaveChanged;
     this.mcpBaseUrl = options?.mcpBaseUrl ?? null;
     this.mcpAuthToken = options?.mcpAuthToken ?? null;
@@ -739,6 +756,10 @@ export class AgentManager {
 
   setAgentArchivedCallback(callback: AgentArchivedCallback): void {
     this.onAgentArchived = callback;
+  }
+
+  setOnAgentTurnEnded(callback: AgentTurnEndedCallback): void {
+    this.onAgentTurnEnded = callback;
   }
 
   setMcpBaseUrl(url: string | null): void {
@@ -1323,6 +1344,8 @@ export class AgentManager {
     const preservedLastUsage = existing.lastUsage;
     const preservedLastError = existing.lastError;
     const preservedAttention = existing.attention;
+    const preservedAutoResumeOnLimit = existing.autoResumeOnLimit;
+    const preservedAutoResume = existing.autoResume;
     const handle = existing.persistence;
     const provider = handle?.provider ?? existing.provider;
     const client = this.requireClient(provider);
@@ -1376,6 +1399,8 @@ export class AgentManager {
         lastUsage: preservedLastUsage,
         lastError: preservedLastError,
         attention: preservedAttention,
+        autoResumeOnLimit: preservedAutoResumeOnLimit,
+        autoResume: preservedAutoResume,
       });
     } finally {
       if (!handedToRegistration) {
@@ -1622,6 +1647,18 @@ export class AgentManager {
     }
   }
 
+  private fireAgentTurnEnded(params: { agentId: string; provider: AgentProvider }): void {
+    const callback = this.onAgentTurnEnded;
+    if (!callback) {
+      return;
+    }
+    try {
+      callback(params);
+    } catch (error) {
+      this.logger.warn({ err: error, agentId: params.agentId }, "onAgentTurnEnded callback failed");
+    }
+  }
+
   private dispatchArchivedStoredAgent(record: StoredAgentRecord): void {
     const updatedAt = new Date(record.updatedAt);
     this.dispatch({
@@ -1657,6 +1694,8 @@ export class AgentManager {
         lastUserMessageAt: record.lastUserMessageAt ? new Date(record.lastUserMessageAt) : null,
         lastUsage: undefined,
         lastError: record.lastError ?? undefined,
+        autoResumeOnLimit: record.autoResumeOnLimit ?? false,
+        autoResume: record.autoResume,
         attention: { requiresAttention: false },
         internal: record.internal,
         labels: record.labels,
@@ -1867,10 +1906,58 @@ export class AgentManager {
     }
   }
 
+  async setAutoResumeEnabled(agentId: string, enabled: boolean): Promise<void> {
+    const agent = this.requireAgent(agentId);
+    agent.autoResumeOnLimit = enabled;
+    if (!enabled) {
+      agent.autoResume = undefined;
+    }
+    await this.persistSnapshot(agent);
+    this.emitState(agent, { persist: false });
+  }
+
+  async setPendingAutoResume(
+    agentId: string,
+    state: { at: number; attempt: number } | null,
+  ): Promise<void> {
+    const agent = this.requireAgent(agentId);
+    agent.autoResume = state ?? undefined;
+    await this.persistSnapshot(agent);
+    this.emitState(agent, { persist: false });
+  }
+
+  getAutoResumeView(agentId: string): {
+    enabled: boolean;
+    pending: { at: number; attempt: number } | null;
+    provider: AgentProvider;
+    running: boolean;
+    archived: boolean;
+    lastUserMessageAt: number | null;
+  } | null {
+    const agent = this.getAgent(agentId);
+    if (!agent) return null;
+    return {
+      enabled: agent.autoResumeOnLimit,
+      pending: agent.autoResume ?? null,
+      provider: agent.provider,
+      running: this.hasInFlightRun(agentId),
+      archived: false,
+      lastUserMessageAt: agent.lastUserMessageAt?.getTime() ?? null,
+    };
+  }
+
+  listAutoResumeAgents(): string[] {
+    return [...this.agents.values()]
+      .filter((agent) => agent.autoResumeOnLimit)
+      .map((agent) => agent.id);
+  }
+
   async archiveSnapshot(agentId: string, archivedAt: string): Promise<StoredAgentRecord> {
     const registry = this.requireRegistry();
-    const liveAgent = this.getAgent(agentId);
+    const liveAgent = this.agents.get(agentId);
     if (liveAgent) {
+      liveAgent.autoResume = undefined;
+      liveAgent.autoResumeOnLimit = false;
       await this.persistSnapshot(liveAgent, {
         internal: liveAgent.internal,
       });
@@ -2148,6 +2235,12 @@ export class AgentManager {
     const agent = existingAgent;
     const isReplacement = agent.pendingReplacement;
     agent.lastError = undefined;
+    const isSystemPrompt = isSystemInjectedEnvelope(submittedPromptText(prompt));
+    if (agent.autoResume && !isSystemPrompt) {
+      agent.autoResume = undefined;
+      // persisted by the normal turn-start snapshot flow; emitState so the banner clears immediately
+      this.emitState(agent, { persist: false });
+    }
 
     const pendingRun = this.runs.createPendingRun(agentId);
 
@@ -2914,6 +3007,8 @@ export class AgentManager {
       historyPrimed?: boolean;
       lastUsage?: AgentUsage;
       lastError?: string;
+      autoResumeOnLimit?: boolean;
+      autoResume?: { at: number; attempt: number };
       attention?: AttentionState;
       initialTitle?: string | null;
       publishWhenReady?: boolean;
@@ -3068,6 +3163,8 @@ export class AgentManager {
           historyPrimed?: boolean;
           lastUsage?: AgentUsage;
           lastError?: string;
+          autoResumeOnLimit?: boolean;
+          autoResume?: { at: number; attempt: number };
           attention?: AttentionState;
           persistence?: AgentPersistenceHandle;
           workspaceId?: string;
@@ -3076,6 +3173,7 @@ export class AgentManager {
       | undefined;
   }): ActiveManagedAgent {
     const { resolvedAgentId, session, config, now, durableTimelineHasRows, options } = params;
+    const autoResumeState = resolveInitialAutoResume(options ?? {});
     return {
       id: resolvedAgentId,
       provider: config.provider,
@@ -3109,6 +3207,8 @@ export class AgentManager {
       lastUserMessageAt: options?.lastUserMessageAt ?? null,
       lastUsage: options?.lastUsage,
       lastError: options?.lastError,
+      autoResumeOnLimit: autoResumeState.autoResumeOnLimit,
+      autoResume: autoResumeState.autoResume,
       attention: resolveInitialAttention(options?.attention),
       internal: config.internal ?? false,
       labels: options?.labels ?? {},
@@ -3876,6 +3976,9 @@ export class AgentManager {
       this.emitState(agent);
     }
     void this.refreshRuntimeInfo(agent);
+    if (isForegroundEvent) {
+      this.fireAgentTurnEnded({ agentId: agent.id, provider: agent.provider });
+    }
   }
 
   private async onStreamTurnFailed(params: {
@@ -3916,6 +4019,9 @@ export class AgentManager {
     this.resolvePendingPermissionsForAgent(agent, event.provider, options, "Turn failed");
     if (!isForegroundEvent && !agent.activeForegroundTurnId) {
       this.emitState(agent);
+    }
+    if (isForegroundEvent) {
+      this.fireAgentTurnEnded({ agentId: agent.id, provider: agent.provider });
     }
   }
 

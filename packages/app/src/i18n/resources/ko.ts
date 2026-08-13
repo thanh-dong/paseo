@@ -233,6 +233,11 @@ export const ko: TranslationResources = {
       callout: "이 에이전트는 보관되었습니다",
       unarchive: "보관 해제",
     },
+    autoResume: {
+      title: "사용량 한도에 도달했습니다",
+      description: "이 세션은 {{time}}에 자동으로 재개됩니다.",
+      resumeNow: "지금 재개",
+    },
   },
   sessions: {
     title: "기록",
@@ -1719,6 +1724,10 @@ export const ko: TranslationResources = {
     tokens: "{{used}} / {{max}} 토큰",
     sessionCost: "세션 비용 {{cost}}",
     accessibility: "컨텍스트 윈도우 {{percentage}}% 사용됨",
+    autoResume: {
+      toggle: "한도가 재설정되면 자동으로 재개",
+      scheduled: "{{time}}에 재개",
+    },
   },
   review: {
     comment: {

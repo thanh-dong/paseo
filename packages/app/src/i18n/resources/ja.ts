@@ -235,6 +235,11 @@ export const ja: TranslationResources = {
       callout: "このエージェントはアーカイブされています",
       unarchive: "アーカイブ解除",
     },
+    autoResume: {
+      title: "利用制限に達しました",
+      description: "このセッションは{{time}}に自動的に再開します。",
+      resumeNow: "今すぐ再開",
+    },
   },
   sessions: {
     title: "履歴",
@@ -1725,6 +1730,10 @@ export const ja: TranslationResources = {
     tokens: "{{used}} / {{max}}トークン",
     sessionCost: "セッションコスト: {{cost}}",
     accessibility: "コンテキストウィンドウ{{percentage}}%使用",
+    autoResume: {
+      toggle: "上限がリセットされたら自動的に再開",
+      scheduled: "{{time}}に再開",
+    },
   },
   review: {
     comment: {

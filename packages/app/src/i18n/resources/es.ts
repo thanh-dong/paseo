@@ -235,6 +235,11 @@ export const es: TranslationResources = {
       callout: "Este agente está archivado.",
       unarchive: "Desarchivar",
     },
+    autoResume: {
+      title: "Se alcanzó el límite de uso",
+      description: "Esta sesión se reanudará automáticamente a las {{time}}.",
+      resumeNow: "Reanudar ahora",
+    },
   },
   sessions: {
     title: "Historial",
@@ -1752,6 +1757,10 @@ export const es: TranslationResources = {
     tokens: "Fichas{{used}}/{{max}}",
     sessionCost: "Costo de la sesión{{cost}}",
     accessibility: "Ventana de contexto{{percentage}}% utilizada",
+    autoResume: {
+      toggle: "Reanudar automáticamente cuando se restablezca el límite",
+      scheduled: "Se reanuda a las {{time}}",
+    },
   },
   review: {
     comment: {

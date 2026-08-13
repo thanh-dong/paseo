@@ -213,6 +213,7 @@ import {
 } from "../services/github-service.js";
 import type { ForgeService } from "../services/forge-service.js";
 import type { ProviderUsageService } from "../services/quota-fetcher/service.js";
+import type { AutoResumeWatcher } from "./agent/auto-resume.js";
 import {
   summarizeFetchWorkspacesEntries,
   workspaceIdsOnCheckout,
@@ -464,6 +465,7 @@ export interface SessionOptions {
   terminalManager: TerminalManager | null;
   providerSnapshotManager: ProviderSnapshotManager;
   providerUsageService: ProviderUsageService;
+  autoResumeWatcher: AutoResumeWatcher;
   hubExecutionAgents?: HubExecutionAgents;
   hubRelationships?: HubRelationshipManagement;
   serviceProxy?: ServiceProxySubsystem;
@@ -652,6 +654,7 @@ export class Session {
   private registeredPushToken: string | null = null;
   private readonly terminalManager: TerminalManager | null;
   private readonly providerSnapshotManager: ProviderSnapshotManager;
+  private readonly autoResumeWatcher: AutoResumeWatcher;
   private readonly serviceProxy: ServiceProxySubsystem | null;
   private readonly scriptRuntimeStore: WorkspaceScriptRuntimeStore | null;
   private readonly getDaemonTcpPort: (() => number | null) | null;
@@ -713,6 +716,7 @@ export class Session {
       terminalManager,
       providerSnapshotManager,
       providerUsageService,
+      autoResumeWatcher,
       serviceProxy,
       scriptRuntimeStore,
       workspaceSetupSnapshots,
@@ -762,6 +766,7 @@ export class Session {
     });
     this.agentManager = agentManager;
     this.agentStorage = agentStorage;
+    this.autoResumeWatcher = autoResumeWatcher;
     this.projectRegistry = projectRegistry;
     this.workspaceRegistry = workspaceRegistry;
     this.filesystem = filesystem ?? nodeSessionFileSystem;
@@ -1900,6 +1905,10 @@ export class Session {
     switch (msg.type) {
       case "agent.detach.request":
         return this.handleDetachAgentRequest(msg.agentId, msg.requestId);
+      case "agent.auto_resume.set.request":
+        return this.handleAgentAutoResumeSet(msg);
+      case "agent.auto_resume.trigger.request":
+        return this.handleAgentAutoResumeTrigger(msg);
       default:
         return undefined;
     }
@@ -2497,6 +2506,59 @@ export class Session {
         },
       });
     }
+  }
+
+  private async handleAgentAutoResumeSet(
+    message: Extract<SessionInboundMessage, { type: "agent.auto_resume.set.request" }>,
+  ): Promise<void> {
+    const { agentId, enabled, requestId } = message;
+    try {
+      await this.autoResumeWatcher.setEnabled(agentId, enabled);
+      this.emit({
+        type: "agent.auto_resume.set.response",
+        payload: { requestId, agentId, accepted: true, error: null },
+      });
+    } catch (error) {
+      const errorMessage = getErrorMessageOr(error, "Failed to update auto-resume");
+      this.sessionLogger.error({ err: error, agentId, requestId }, "Failed to update auto-resume");
+      this.emit({
+        type: "agent.auto_resume.set.response",
+        payload: { requestId, agentId, accepted: false, error: errorMessage },
+      });
+    }
+  }
+
+  private async handleAgentAutoResumeTrigger(
+    message: Extract<SessionInboundMessage, { type: "agent.auto_resume.trigger.request" }>,
+  ): Promise<void> {
+    const { agentId, requestId } = message;
+    // Validate synchronously so we can respond right away; `triggerNow` awaits
+    // a full agent turn, so it is fired without blocking this RPC.
+    const view = this.agentManager.getAutoResumeView(agentId);
+    if (!view) {
+      this.emit({
+        type: "agent.auto_resume.trigger.response",
+        payload: { requestId, agentId, accepted: false, error: `Agent ${agentId} not found` },
+      });
+      return;
+    }
+    if (view.running) {
+      this.emit({
+        type: "agent.auto_resume.trigger.response",
+        payload: { requestId, agentId, accepted: false, error: "Agent is already running" },
+      });
+      return;
+    }
+    this.emit({
+      type: "agent.auto_resume.trigger.response",
+      payload: { requestId, agentId, accepted: true, error: null },
+    });
+    void this.autoResumeWatcher.triggerNow(agentId).catch((error) => {
+      this.sessionLogger.warn(
+        { err: error, agentId, requestId },
+        "Auto-resume manual trigger failed",
+      );
+    });
   }
 
   private async handleCloseItemsRequest(msg: CloseItemsRequest): Promise<void> {

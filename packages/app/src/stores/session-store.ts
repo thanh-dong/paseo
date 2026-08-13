@@ -89,6 +89,8 @@ export interface Agent {
   runtimeInfo?: AgentRuntimeInfo;
   lastUsage?: AgentUsage;
   lastError?: string | null;
+  autoResumeOnLimit?: boolean;
+  autoResumeAt?: Date | null;
   title: string | null;
   cwd: string;
   workspaceId?: string;

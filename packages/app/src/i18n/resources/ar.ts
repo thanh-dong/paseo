@@ -232,6 +232,11 @@ export const ar: TranslationResources = {
       callout: "تمت أرشفة هذا الوكيل",
       unarchive: "إلغاء الأرشفة",
     },
+    autoResume: {
+      title: "تم بلوغ حد الاستخدام",
+      description: "ستستأنف هذه الجلسة تلقائيًا في {{time}}.",
+      resumeNow: "استئناف الآن",
+    },
   },
   sessions: {
     title: "السجل",
@@ -1709,6 +1714,10 @@ export const ar: TranslationResources = {
     tokens: "رموز{{used}}/{{max}}",
     sessionCost: "تكلفة الجلسة{{cost}}",
     accessibility: "تم استخدام نافذة السياق{{percentage}}%",
+    autoResume: {
+      toggle: "استئناف تلقائي عند إعادة تعيين الحد",
+      scheduled: "الاستئناف في {{time}}",
+    },
   },
   review: {
     comment: {

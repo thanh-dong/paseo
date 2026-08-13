@@ -166,6 +166,8 @@ function serializeAgent(agent: Agent): StoredAgent {
     ...(agent.runtimeInfo ? { runtimeInfo: agent.runtimeInfo } : {}),
     ...(agent.lastUsage ? { lastUsage: agent.lastUsage } : {}),
     ...(agent.lastError ? { lastError: agent.lastError } : {}),
+    ...(agent.autoResumeOnLimit ? { autoResumeOnLimit: agent.autoResumeOnLimit } : {}),
+    ...(agent.autoResumeAt ? { autoResumeAt: agent.autoResumeAt.getTime() } : {}),
     title: agent.title,
     labels: agent.labels,
     requiresAttention: agent.requiresAttention ?? false,

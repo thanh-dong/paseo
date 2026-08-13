@@ -236,6 +236,11 @@ export const fr: TranslationResources = {
       callout: "Cet agent est archivé",
       unarchive: "Désarchiver",
     },
+    autoResume: {
+      title: "Limite d'utilisation atteinte",
+      description: "Cette session reprendra automatiquement à {{time}}.",
+      resumeNow: "Reprendre maintenant",
+    },
   },
   sessions: {
     title: "Historique",
@@ -1756,6 +1761,10 @@ export const fr: TranslationResources = {
     tokens: "Jetons{{used}}/{{max}}",
     sessionCost: "Coût de la séance{{cost}}",
     accessibility: "Fenêtre contextuelle{{percentage}}% utilisé",
+    autoResume: {
+      toggle: "Reprendre automatiquement à la réinitialisation de la limite",
+      scheduled: "Reprise à {{time}}",
+    },
   },
   review: {
     comment: {

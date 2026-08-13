@@ -2480,6 +2480,33 @@ export class DaemonClient {
     }
   }
 
+  async setAgentAutoResume(agentId: string, enabled: boolean): Promise<void> {
+    const payload =
+      await this.sendNamespacedCorrelatedSessionRequest<"agent.auto_resume.set.response">({
+        message: {
+          type: "agent.auto_resume.set.request",
+          agentId,
+          enabled,
+        },
+      });
+    if (!payload.accepted) {
+      throw new Error(payload.error ?? "setAgentAutoResume rejected");
+    }
+  }
+
+  async triggerAgentAutoResume(agentId: string): Promise<void> {
+    const payload =
+      await this.sendNamespacedCorrelatedSessionRequest<"agent.auto_resume.trigger.response">({
+        message: {
+          type: "agent.auto_resume.trigger.request",
+          agentId,
+        },
+      });
+    if (!payload.accepted) {
+      throw new Error(payload.error ?? "triggerAgentAutoResume rejected");
+    }
+  }
+
   async updateAgent(
     agentId: string,
     updates: { name?: string; labels?: Record<string, string> },

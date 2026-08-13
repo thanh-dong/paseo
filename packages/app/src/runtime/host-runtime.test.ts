@@ -2964,6 +2964,7 @@ describe("HostRuntimeStore", () => {
         lastActivityAt: new Date(stale.updatedAt),
         archivedAt: stale.archivedAt ? new Date(stale.archivedAt) : null,
         attentionTimestamp: stale.attentionTimestamp ? new Date(stale.attentionTimestamp) : null,
+        autoResumeAt: stale.autoResumeAt ? new Date(stale.autoResumeAt) : null,
         parentAgentId: null,
       };
       return new Map([[stale.id, staleAgent]]);

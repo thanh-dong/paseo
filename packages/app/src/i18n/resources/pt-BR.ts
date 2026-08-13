@@ -235,6 +235,11 @@ export const ptBR: TranslationResources = {
       callout: "Este agente está arquivado",
       unarchive: "Desarquivar",
     },
+    autoResume: {
+      title: "Limite de uso atingido",
+      description: "Esta sessão será retomada automaticamente às {{time}}.",
+      resumeNow: "Retomar agora",
+    },
   },
   sessions: {
     title: "Histórico de agentes",
@@ -1738,6 +1743,10 @@ export const ptBR: TranslationResources = {
     tokens: "{{used}} / {{max}} tokens",
     sessionCost: "Custo da sessão {{cost}}",
     accessibility: "Janela de contexto {{percentage}}% usada",
+    autoResume: {
+      toggle: "Retomar automaticamente quando o limite for redefinido",
+      scheduled: "Retoma às {{time}}",
+    },
   },
   review: {
     comment: {

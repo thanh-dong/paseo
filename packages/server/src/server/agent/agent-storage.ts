@@ -69,6 +69,13 @@ const STORED_AGENT_SCHEMA = z.object({
   features: z.array(AgentFeatureSchema).optional(),
   persistence: PERSISTENCE_HANDLE_SCHEMA,
   lastError: z.string().nullable().optional(),
+  autoResumeOnLimit: z.boolean().optional(),
+  autoResume: z
+    .object({
+      at: z.number().int().nonnegative(),
+      attempt: z.number().int().positive(),
+    })
+    .optional(),
   requiresAttention: z.boolean().optional(),
   attentionReason: z.enum(["finished", "error", "permission"]).nullable().optional(),
   attentionTimestamp: z.string().nullable().optional(),

@@ -129,6 +129,8 @@ function createManagedAgent(overrides: ManagedAgentOverrides = {}): ManagedAgent
     lastUserMessageAt: overrides.lastUserMessageAt ?? core.now,
     lastUsage: overrides.lastUsage,
     lastError: overrides.lastError,
+    autoResumeOnLimit: overrides.autoResumeOnLimit ?? false,
+    autoResume: overrides.autoResume,
   };
 }
 
@@ -512,6 +514,26 @@ describe("AgentStorage", () => {
     expect(dirs).toHaveLength(1);
     expect(dirs[0]).not.toContain(":");
     expect(dirs[0]).toBe("D-Users-dev-MyProject");
+  });
+
+  test("persists autoResumeOnLimit flag and pending autoResume state", async () => {
+    const agentId = "agent-auto-resume";
+    await storage.applySnapshot(
+      createManagedAgent({
+        id: agentId,
+        autoResumeOnLimit: true,
+        autoResume: { at: 1_800_000_000_000, attempt: 1 },
+      }),
+    );
+
+    const loaded = await storage.get(agentId);
+    expect(loaded?.autoResumeOnLimit).toBe(true);
+    expect(loaded?.autoResume).toEqual({ at: 1_800_000_000_000, attempt: 1 });
+
+    const reloaded = new AgentStorage(storagePath, logger);
+    const persisted = await reloaded.get(agentId);
+    expect(persisted?.autoResumeOnLimit).toBe(true);
+    expect(persisted?.autoResume).toEqual({ at: 1_800_000_000_000, attempt: 1 });
   });
 
   test("remove deletes all duplicate record files across project directories", async () => {

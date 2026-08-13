@@ -231,6 +231,11 @@ export const en = {
       callout: "This agent is archived",
       unarchive: "Unarchive",
     },
+    autoResume: {
+      title: "Usage limit reached",
+      description: "This session will automatically resume at {{time}}.",
+      resumeNow: "Resume now",
+    },
   },
   sessions: {
     title: "History",
@@ -1720,6 +1725,10 @@ export const en = {
     tokens: "{{used}} / {{max}} tokens",
     sessionCost: "Session cost {{cost}}",
     accessibility: "Context window {{percentage}}% used",
+    autoResume: {
+      toggle: "Auto-resume when limit resets",
+      scheduled: "Resumes at {{time}}",
+    },
   },
   review: {
     comment: {
